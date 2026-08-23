@@ -76,6 +76,12 @@ Two consequences follow from that, and they are not bugs:
 **No App Store.** Private API use disqualifies the app. Build it yourself or
 take a release binary.
 
+**A capability string is a claim, not a guarantee.** A display may list a feature
+and then ignore every write to it — the MSI this was built against advertises
+picture mode and never changes it. Kadran reads back after you change a menu
+control, and a value that did not take marks the control as ignored, disables it
+and says so. It never writes on your behalf to find this out.
+
 **Reads can fail, and are retried.** The DDC bus is slow and half duplex, and an
 individual reply gets dropped often enough that a single failure means nothing.
 Reads are retried before a feature is treated as unanswered, and writes are
