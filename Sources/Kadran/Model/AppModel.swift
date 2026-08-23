@@ -1,8 +1,6 @@
 import AppKit
-import Combine
 import CoreGraphics
 import Observation
-import os
 
 /// Everything the menu bar UI binds to.
 @MainActor
@@ -26,9 +24,63 @@ final class AppModel {
     /// be worth showing.
     private(set) var isReading = false
 
+    /// Features this display advertises but does not actually apply.
+    ///
+    /// A capability string is a claim, not a guarantee: this panel lists picture
+    /// mode among its codes and then ignores every write to it. Discovered by
+    /// reading back after the user changes something, never by writing on the
+    /// user's behalf to find out.
+    private(set) var unwritableFeatures: Set<VCP> = []
+
     private(set) var profiles: [Profile] = []
     private(set) var hotKeys: [HotKeyAction: HotKeyBinding] = [:]
     private(set) var scheduleRules: [ScheduleRule] = []
+
+    // MARK: - Settings
+    //
+    // Stored, not computed through to `Store`. `@Observable` tracks stored
+    // properties: a computed property that only reads UserDefaults registers no
+    // dependency, so SwiftUI never learns the value changed and a bound control
+    // drifts out of step with what is persisted. Each of these writes through on
+    // assignment instead.
+
+    var launchesAtLogin: Bool = false {
+        didSet {
+            guard launchesAtLogin != oldValue else { return }
+            LoginItem.setEnabled(launchesAtLogin)
+            let actual = LoginItem.isEnabled
+            loginItemRefused = actual != launchesAtLogin
+            if loginItemRefused {
+                launchesAtLogin = actual
+            }
+        }
+    }
+
+    /// Set when the system refused a login item registration, which happens when
+    /// the app runs from a build directory instead of a bundle.
+    private(set) var loginItemRefused = false
+
+    /// Profile to apply at launch, if any.
+    var launchProfileID: UUID? {
+        didSet { store.launchProfileID = launchProfileID }
+    }
+
+    /// How far one press of a brightness or contrast shortcut moves the value.
+    var hotKeyStep: Int = 5 {
+        didSet {
+            hotKeyStep = max(1, min(hotKeyStep, 50))
+            store.hotKeyStep = hotKeyStep
+        }
+    }
+
+    var isScheduleEnabled: Bool = false {
+        didSet {
+            guard isScheduleEnabled != oldValue else { return }
+            store.isScheduleEnabled = isScheduleEnabled
+            schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
+            if isScheduleEnabled { schedule.applyCurrentRule() }
+        }
+    }
 
     /// Set when the private IOAVService symbols are missing, so the UI can say
     /// why it is doing nothing instead of silently failing.
@@ -36,9 +88,16 @@ final class AppModel {
 
     private let ddc = DDCService.shared
     private let store = Store()
-    private let logger = Logger(subsystem: "dev.kadran", category: "model")
     private let screenObserver = ScreenObserverToken()
     private let schedule = ScheduleEngine()
+
+    /// The in-flight read of the display, cancelled when another starts.
+    /// Reconnecting a cable can fire several notifications at once, and two
+    /// concurrent sweeps of a slow bus interleave into a mess of dropped
+    /// replies.
+    private var syncTask: Task<Void, Never>?
+
+    private var lastAppliedProfileIndex: Int?
 
     var selectedDisplay: DDCDisplay? {
         displays.first { $0.id == selectedDisplayID } ?? displays.first
@@ -50,11 +109,8 @@ final class AppModel {
         scheduleRules = store.scheduleRules()
         launchProfileID = store.launchProfileID
         launchesAtLogin = LoginItem.isEnabled
-
-        // Assigned directly so the didSet side effects do not run before the
-        // rest of the model exists.
-        _hotKeyStep = store.hotKeyStep
-        _isScheduleEnabled = store.isScheduleEnabled
+        hotKeyStep = store.hotKeyStep
+        isScheduleEnabled = store.isScheduleEnabled
 
         guard ddc.isSupported else {
             unsupportedReason = """
@@ -93,7 +149,15 @@ final class AppModel {
             selectedDisplayID = displays.first?.id
         }
 
-        Task { await syncFromDisplay() }
+        scheduleSync()
+    }
+
+    /// Starts a read of the display, replacing any read already running.
+    private func scheduleSync() {
+        syncTask?.cancel()
+        syncTask = Task { [weak self] in
+            await self?.syncFromDisplay()
+        }
     }
 
     /// Features this display advertises and Kadran knows how to present.
@@ -110,14 +174,6 @@ final class AppModel {
         let declared = selectedDisplay?.capabilities.allowedValues(for: feature) ?? []
         return declared.isEmpty ? feature.fallbackValues : declared
     }
-
-    /// Features this display advertises but does not actually apply.
-    ///
-    /// A capability string is a claim, not a guarantee: this panel lists picture
-    /// mode among its codes and then ignores every write to it. Discovered by
-    /// reading back after the user changes something, never by writing on the
-    /// user's behalf to find out.
-    private(set) var unwritableFeatures: Set<VCP> = []
 
     func maximum(for feature: VCP) -> UInt16 {
         maxima[feature] ?? 100
@@ -164,6 +220,7 @@ final class AppModel {
             }
         }.value
 
+        guard !Task.isCancelled else { return }
         values = readings.mapValues(\.current)
         maxima = readings.mapValues(\.maximum)
     }
@@ -203,7 +260,7 @@ final class AppModel {
 
     func selectDisplay(_ id: CGDirectDisplayID) {
         selectedDisplayID = id
-        Task { await syncFromDisplay() }
+        scheduleSync()
     }
 
     // MARK: - Control
@@ -290,20 +347,6 @@ final class AppModel {
         hotKeys[action] != nil && !HotKeyCenter.shared.isRegistered(action)
     }
 
-    /// Stored rather than computed through to `Store`.
-    ///
-    /// `@Observable` tracks stored properties. A computed property that reads
-    /// UserDefaults registers no dependency, so SwiftUI never learns the value
-    /// changed and a bound control drifts out of step with what is persisted —
-    /// which is how the schedule toggle came back off after the window lost
-    /// focus. Each of these writes through on assignment instead.
-    var hotKeyStep: Int = 5 {
-        didSet {
-            hotKeyStep = max(1, min(hotKeyStep, 50))
-            store.hotKeyStep = hotKeyStep
-        }
-    }
-
     private func perform(_ action: HotKeyAction) {
         let step = hotKeyStep
         switch action {
@@ -321,8 +364,6 @@ final class AppModel {
         apply(profiles[next])
     }
 
-    private var lastAppliedProfileIndex: Int?
-
     // MARK: - Schedule
 
     private func wireSchedule() {
@@ -332,15 +373,6 @@ final class AppModel {
             apply(profile)
         }
         schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
-    }
-
-    var isScheduleEnabled: Bool = false {
-        didSet {
-            guard isScheduleEnabled != oldValue else { return }
-            store.isScheduleEnabled = isScheduleEnabled
-            schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
-            if isScheduleEnabled { schedule.applyCurrentRule() }
-        }
     }
 
     func addScheduleRule(profileID: UUID, hour: Int, minute: Int) {
@@ -365,23 +397,6 @@ final class AppModel {
     }
 
     // MARK: - Login item
-
-    /// Mirrors the system's login item registration.
-    ///
-    /// Assigning asks the system to change it and then reads back what the
-    /// system actually did, so a refused registration shows as still off rather
-    /// than as a switch that silently lies.
-    var launchesAtLogin: Bool = false {
-        didSet {
-            guard launchesAtLogin != oldValue else { return }
-            LoginItem.setEnabled(launchesAtLogin)
-            let actual = LoginItem.isEnabled
-            loginItemRefused = actual != launchesAtLogin
-            if loginItemRefused {
-                launchesAtLogin = actual
-            }
-        }
-    }
 
     // MARK: - Profiles
 
@@ -446,13 +461,6 @@ final class AppModel {
         store.setProfiles(profiles)
     }
 
-    /// Set when the system refused a login item registration, which happens
-    /// when the app runs from a build directory instead of a bundle.
-    private(set) var loginItemRefused = false
-
-    var launchProfileID: UUID? {
-        didSet { store.launchProfileID = launchProfileID }
-    }
 }
 
 

@@ -143,6 +143,12 @@ private struct ProfileSettings: View {
     @Bindable var model: AppModel
     @State private var selection: Profile.ID?
 
+    /// The profile being renamed, and the text so far. Renaming happens in
+    /// place: a profile captured from the menu bar arrives called "New profile",
+    /// and without this there was no way to change that.
+    @State private var renamingID: Profile.ID?
+    @State private var draftName = ""
+
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $selection) {
@@ -150,13 +156,24 @@ private struct ProfileSettings: View {
                     HStack {
                         Image(systemName: profile.symbolName)
                             .frame(width: 18)
-                        Text(profile.name)
+                        if renamingID == profile.id {
+                            TextField("Name", text: $draftName)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { commitRename(profile) }
+                        } else {
+                            Text(profile.name)
+                                .onTapGesture(count: 2) { beginRename(profile) }
+                        }
                         Spacer()
                         Text(summary(of: profile))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     .tag(profile.id)
+                    .contextMenu {
+                        Button("Rename") { beginRename(profile) }
+                        Button("Delete", role: .destructive) { model.deleteProfile(profile) }
+                    }
                 }
             }
 
@@ -165,6 +182,7 @@ private struct ProfileSettings: View {
             HStack(spacing: 8) {
                 Button {
                     model.captureProfile(named: "New profile")
+                    if let created = model.profiles.last { beginRename(created) }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -174,6 +192,11 @@ private struct ProfileSettings: View {
                     if let profile = selected { model.deleteProfile(profile) }
                 } label: {
                     Image(systemName: "minus")
+                }
+                .disabled(selected == nil)
+
+                Button("Rename") {
+                    if let profile = selected { beginRename(profile) }
                 }
                 .disabled(selected == nil)
 
@@ -190,6 +213,20 @@ private struct ProfileSettings: View {
 
     private var selected: Profile? {
         model.profiles.first { $0.id == selection }
+    }
+
+    private func beginRename(_ profile: Profile) {
+        selection = profile.id
+        draftName = profile.name
+        renamingID = profile.id
+    }
+
+    private func commitRename(_ profile: Profile) {
+        let name = draftName.trimmingCharacters(in: .whitespaces)
+        if !name.isEmpty {
+            model.renameProfile(profile, to: name)
+        }
+        renamingID = nil
     }
 
     /// Brightness and contrast only: the full VCP set does not fit on one row,
