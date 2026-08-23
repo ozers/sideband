@@ -127,6 +127,7 @@ struct MenuContent: View {
             FeaturePicker(
                 feature: feature,
                 options: model.allowedValues(for: feature),
+                isIgnored: model.unwritableFeatures.contains(feature),
                 value: pickerBinding(for: feature)
             )
         case .command:
@@ -284,6 +285,10 @@ private struct FeatureSlider: View {
 private struct FeaturePicker: View {
     let feature: VCP
     let options: [UInt8]
+
+    /// The display advertised this feature and then ignored a write to it.
+    let isIgnored: Bool
+
     @Binding var value: UInt8
 
     var body: some View {
@@ -292,6 +297,16 @@ private struct FeaturePicker: View {
                 .frame(width: 16)
             Text(feature.label)
                 .font(.caption)
+            if isIgnored {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .help(
+                        """
+                        This display lists the feature but does not apply changes                         to it. Use the monitor's own menu instead.
+                        """
+                    )
+            }
             Spacer()
             Picker("", selection: $value) {
                 ForEach(options, id: \.self) { option in
@@ -302,6 +317,7 @@ private struct FeaturePicker: View {
             .labelsHidden()
             .controlSize(.small)
             .frame(maxWidth: 130)
+            .opacity(isIgnored ? 0.5 : 1)
         }
     }
 }

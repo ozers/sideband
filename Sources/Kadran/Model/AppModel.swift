@@ -100,8 +100,17 @@ final class AppModel {
     }
 
     func allowedValues(for feature: VCP) -> [UInt8] {
-        selectedDisplay?.capabilities.allowedValues(for: feature) ?? []
+        let declared = selectedDisplay?.capabilities.allowedValues(for: feature) ?? []
+        return declared.isEmpty ? feature.fallbackValues : declared
     }
+
+    /// Features this display advertises but does not actually apply.
+    ///
+    /// A capability string is a claim, not a guarantee: this panel lists picture
+    /// mode among its codes and then ignores every write to it. Discovered by
+    /// reading back after the user changes something, never by writing on the
+    /// user's behalf to find out.
+    private(set) var unwritableFeatures: Set<VCP> = []
 
     func maximum(for feature: VCP) -> UInt16 {
         maxima[feature] ?? 100
@@ -177,6 +186,30 @@ final class AppModel {
             values[feature] = value
         }
         ddc.set(feature, to: value, on: display)
+
+        // Only enumerated features are verified. Sliders move continuously, so
+        // reading back after each step would put dozens of round trips on a bus
+        // that drops replies when it is busy.
+        if feature.kind == .enumerated {
+            verify(feature, expected: value, on: display)
+        }
+    }
+
+    private func verify(_ feature: VCP, expected: UInt16, on display: DDCDisplay) {
+        Task { [ddc] in
+            try? await Task.sleep(for: .milliseconds(300))
+            let reading = await Task.detached { ddc.read(feature, from: display) }.value
+
+            // No answer is not evidence: the reply may simply have been dropped.
+            guard let actual = reading?.current else { return }
+
+            if actual == expected {
+                unwritableFeatures.remove(feature)
+            } else {
+                unwritableFeatures.insert(feature)
+                values[feature] = actual
+            }
+        }
     }
 
     /// Sends a command feature, then re-reads, since a reset changes values

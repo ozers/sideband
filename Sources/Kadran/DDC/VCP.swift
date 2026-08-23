@@ -157,6 +157,23 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
         allCases.filter { $0.kind != .readOnly && $0 != .inputSource && $0.kind != .command }
     }
 
+    /// Values to offer when a display advertises an enumerated feature without
+    /// listing which values it takes.
+    ///
+    /// The capability string is allowed to name a code with no value list, and
+    /// this display does exactly that for mute. Falling back to what MCCS
+    /// defines is better than showing an empty menu, and a value the display
+    /// rejects is caught by write verification rather than by guesswork here.
+    var fallbackValues: [UInt8] {
+        switch self {
+        case .mute: return [0x01, 0x02]
+        case .colorPreset: return [0x01, 0x04, 0x05, 0x06, 0x08, 0x0B]
+        case .displayApplication: return Array(0x00...0x08)
+        case .inputSource: return [0x0F, 0x10, 0x11, 0x12, 0x1B]
+        default: return []
+        }
+    }
+
     /// Names for the values of an enumerated feature, where MCCS defines them.
     ///
     /// Only the values a display advertises are ever shown, so an entry missing
