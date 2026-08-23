@@ -43,15 +43,35 @@ final class AppModel {
     // dependency, so SwiftUI never learns the value changed and a bound control
     // drifts out of step with what is persisted. Each of these writes through on
     // assignment instead.
+    //
+    // Assigning to one of these from inside its own `didSet` re-enters the
+    // setter. `@Observable` rewrites the property as computed, so unlike a plain
+    // stored property the observer runs again — even when the value is
+    // unchanged, which is an unbounded loop rather than one extra pass. Where a
+    // value has to be corrected after the fact, `isCorrecting` suppresses the
+    // second run.
+
+    private var isCorrecting = false
+
+    /// Assigns without running the side effects of the property's observer.
+    private func correcting(_ apply: () -> Void) {
+        isCorrecting = true
+        apply()
+        isCorrecting = false
+    }
 
     var launchesAtLogin: Bool = false {
         didSet {
-            guard launchesAtLogin != oldValue else { return }
+            guard !isCorrecting, launchesAtLogin != oldValue else { return }
             LoginItem.setEnabled(launchesAtLogin)
+
+            // Read back what the system actually did, so a refused registration
+            // shows as a switch that stayed off rather than one that claims a
+            // registration that never happened.
             let actual = LoginItem.isEnabled
             loginItemRefused = actual != launchesAtLogin
             if loginItemRefused {
-                launchesAtLogin = actual
+                correcting { launchesAtLogin = actual }
             }
         }
     }
@@ -68,14 +88,18 @@ final class AppModel {
     /// How far one press of a brightness or contrast shortcut moves the value.
     var hotKeyStep: Int = 5 {
         didSet {
-            hotKeyStep = max(1, min(hotKeyStep, 50))
+            guard !isCorrecting else { return }
+            let clamped = min(max(hotKeyStep, 1), 50)
+            if clamped != hotKeyStep {
+                correcting { hotKeyStep = clamped }
+            }
             store.hotKeyStep = hotKeyStep
         }
     }
 
     var isScheduleEnabled: Bool = false {
         didSet {
-            guard isScheduleEnabled != oldValue else { return }
+            guard !isCorrecting, isScheduleEnabled != oldValue else { return }
             store.isScheduleEnabled = isScheduleEnabled
             schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
             if isScheduleEnabled { schedule.applyCurrentRule() }
