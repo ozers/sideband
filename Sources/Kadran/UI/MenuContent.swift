@@ -154,12 +154,8 @@ struct MenuContent: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Restore values at launch", isOn: restoreBinding)
-                .font(.caption)
-                .toggleStyle(.checkbox)
-
             HStack {
-                Button("Rescan") { model.refreshDisplays() }
+                Button("Settings…") { openSettings() }
                     .font(.caption)
                 Spacer()
                 quitButton
@@ -167,11 +163,19 @@ struct MenuContent: View {
         }
     }
 
-    private var restoreBinding: Binding<Bool> {
-        Binding(
-            get: { model.restoresOnLaunch },
-            set: { model.restoresOnLaunch = $0 }
-        )
+    /// Opens the Settings scene.
+    ///
+    /// `SettingsLink` would be the declarative route, but it cannot be used
+    /// here: the menu bar popover closes on focus loss, and the window it opens
+    /// would appear behind every other app since an accessory-policy app is
+    /// never frontmost. Activating first is what puts it in front.
+    private func openSettings() {
+        NSApp.activate(ignoringOtherApps: true)
+        if #available(macOS 14.0, *) {
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        } else {
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+        }
     }
 
     private var quitButton: some View {

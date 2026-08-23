@@ -60,6 +60,71 @@ struct Store {
         }
     }
 
+    // MARK: - Hot keys
+
+    private let hotKeysKey = "hotKeys"
+
+    func hotKeys() -> [HotKeyAction: HotKeyBinding] {
+        guard let data = defaults.data(forKey: hotKeysKey) else { return [:] }
+        do {
+            let raw = try JSONDecoder().decode([String: HotKeyBinding].self, from: data)
+            return raw.reduce(into: [:]) { result, pair in
+                guard let action = HotKeyAction(rawValue: pair.key) else { return }
+                result[action] = pair.value
+            }
+        } catch {
+            logger.error("hot keys failed to decode, starting unbound: \(error)")
+            return [:]
+        }
+    }
+
+    func setHotKeys(_ hotKeys: [HotKeyAction: HotKeyBinding]) {
+        let raw = hotKeys.reduce(into: [String: HotKeyBinding]()) { result, pair in
+            result[pair.key.rawValue] = pair.value
+        }
+        do {
+            defaults.set(try JSONEncoder().encode(raw), forKey: hotKeysKey)
+        } catch {
+            logger.error("hot keys failed to encode, not saved: \(error)")
+        }
+    }
+
+    /// How much one press of a brightness or contrast shortcut moves the value.
+    var hotKeyStep: Int {
+        get {
+            let stored = defaults.integer(forKey: "hotKeyStep")
+            return stored == 0 ? 5 : stored
+        }
+        nonmutating set { defaults.set(newValue, forKey: "hotKeyStep") }
+    }
+
+    // MARK: - Schedule
+
+    private let scheduleKey = "scheduleRules"
+
+    func scheduleRules() -> [ScheduleRule] {
+        guard let data = defaults.data(forKey: scheduleKey) else { return [] }
+        do {
+            return try JSONDecoder().decode([ScheduleRule].self, from: data)
+        } catch {
+            logger.error("schedule failed to decode, starting empty: \(error)")
+            return []
+        }
+    }
+
+    func setScheduleRules(_ rules: [ScheduleRule]) {
+        do {
+            defaults.set(try JSONEncoder().encode(rules), forKey: scheduleKey)
+        } catch {
+            logger.error("schedule failed to encode, not saved: \(error)")
+        }
+    }
+
+    var isScheduleEnabled: Bool {
+        get { defaults.bool(forKey: "isScheduleEnabled") }
+        nonmutating set { defaults.set(newValue, forKey: "isScheduleEnabled") }
+    }
+
     // MARK: - Preferences
 
     /// Whether to push remembered values back to the monitor at launch.

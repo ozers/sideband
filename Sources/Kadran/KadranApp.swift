@@ -24,6 +24,10 @@ struct KadranApp: App {
             MenuContent(model: model)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView(model: model)
+        }
     }
 }
 

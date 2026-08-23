@@ -13,8 +13,10 @@ a standard the monitor speaks whether or not the vendor ships a Mac client.
 - Brightness, contrast and per-channel RGB gain sliders for every attached
   external display
 - Named profiles (Day / Night / Movie / Game, plus your own) applied in one click
+- Global keyboard shortcuts for brightness, contrast and profile cycling
+- Time-based profile switching, e.g. Night at 20:00
+- Launch at login, and optionally restoring the last values on start
 - A CLI in the same binary, for scripting: `kadran set brightness 40`
-- Remembers values per display and can push them back at login
 
 ## Requirements
 
@@ -35,6 +37,13 @@ cp -r dist/Kadran.app /Applications/
 ```
 
 The app is signed ad-hoc, so the first launch needs a right-click → Open.
+
+## Shortcuts
+
+Shortcuts are registered through Carbon's `RegisterEventHotKey` rather than a
+global `NSEvent` monitor, so Kadran never asks for Accessibility permission.
+A combination already owned by another app cannot be claimed; the Shortcuts tab
+marks those with a warning triangle instead of failing quietly.
 
 ## CLI
 

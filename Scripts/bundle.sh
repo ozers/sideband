@@ -14,7 +14,10 @@ cd "$(dirname "$0")/.."
 
 OUT_DIR="${1:-dist}"
 APP="$OUT_DIR/Kadran.app"
-VERSION="$(git describe --tags --always 2>/dev/null || echo "0.1.0")"
+# --always is deliberately absent: with no tags it returns a commit hash, which
+# is not a valid CFBundleShortVersionString and makes the app look unversioned
+# in Finder. Tag a release to change this.
+VERSION="$(git describe --tags 2>/dev/null || echo "0.1.0")"
 
 echo "Building release…"
 swift build -c release --arch arm64
