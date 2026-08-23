@@ -1,11 +1,12 @@
 import Foundation
 import os
 
-/// Persistence for everything the monitor cannot tell us.
+/// Persistence for the things a display cannot hold on the app's behalf:
+/// profiles, shortcuts and schedule rules.
 ///
-/// This display answers no DDC read, so the last value written is the only
-/// record that exists. If it is lost, the sliders come back at a guess and the
-/// UI disagrees with the panel until the user touches every control.
+/// Feature values are deliberately absent. They are read from the display, so
+/// storing a copy would only create a second version of the truth that goes
+/// stale the moment someone touches the monitor's own menu.
 struct Store {
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "dev.kadran", category: "store")
@@ -14,38 +15,17 @@ struct Store {
         self.defaults = defaults
     }
 
-    // MARK: - Per-display values
-
-    private func valuesKey(_ displayKey: String) -> String { "values.\(displayKey)" }
-
-    func values(for displayKey: String) -> [VCP: UInt16] {
-        guard let raw = defaults.dictionary(forKey: valuesKey(displayKey)) as? [String: Int] else {
-            return [:]
-        }
-        return raw.reduce(into: [:]) { result, pair in
-            guard let code = UInt8(pair.key, radix: 16),
-                  let feature = VCP(rawValue: code),
-                  let value = UInt16(exactly: pair.value)
-            else { return }
-            result[feature] = value
-        }
-    }
-
-    func setValues(_ values: [VCP: UInt16], for displayKey: String) {
-        let raw = values.reduce(into: [String: Int]()) { result, pair in
-            result[String(pair.key.rawValue, radix: 16)] = Int(pair.value)
-        }
-        defaults.set(raw, forKey: valuesKey(displayKey))
-    }
-
     // MARK: - Profiles
 
     private let profilesKey = "profiles"
 
     /// Bumped when the shipped defaults change in a way that makes previously
-    /// saved copies wrong. Version 2 replaced colour gains of 100 in the
-    /// non-Night profiles with an explicit factory colour reset.
-    private static let currentProfilesVersion = 2
+    /// saved copies wrong.
+    ///
+    /// Version 3 dropped colour gains from the built-in profiles entirely and
+    /// moved colour to colour temperature, after reading the display showed
+    /// that gain neutral is 50 rather than the 100 the earlier defaults wrote.
+    private static let currentProfilesVersion = 3
 
     func profiles() -> [Profile] {
         let storedVersion = defaults.integer(forKey: "profilesVersion")
@@ -139,11 +119,18 @@ struct Store {
 
     // MARK: - Preferences
 
-    /// Whether to push remembered values back to the monitor at launch.
-    /// Off by default: on first run there is nothing remembered worth pushing,
-    /// and a surprise brightness change at login is a bad first impression.
-    var restoresOnLaunch: Bool {
-        get { defaults.bool(forKey: "restoresOnLaunch") }
-        nonmutating set { defaults.set(newValue, forKey: "restoresOnLaunch") }
+    /// A profile to apply when Kadran starts, if any.
+    ///
+    /// Replaces the old "restore the values we remember" setting: with values
+    /// read from the display there is nothing to restore, but choosing which
+    /// profile the day should start in is still worth having.
+    var launchProfileID: UUID? {
+        get {
+            guard let raw = defaults.string(forKey: "launchProfileID") else { return nil }
+            return UUID(uuidString: raw)
+        }
+        nonmutating set {
+            defaults.set(newValue?.uuidString, forKey: "launchProfileID")
+        }
     }
 }

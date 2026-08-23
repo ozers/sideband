@@ -11,10 +11,20 @@ final class AppModel {
     private(set) var displays: [DDCDisplay] = []
     var selectedDisplayID: CGDirectDisplayID?
 
-    /// The values believed to be on the panel right now. Believed, not known:
-    /// changing brightness from the monitor's own OSD leaves this stale, and
-    /// nothing can detect that.
+    /// Current values, read from the display rather than remembered.
+    ///
+    /// Refreshed at launch and whenever the display configuration changes, so a
+    /// change made from the monitor's own on-screen menu shows up here too.
     private(set) var values: [VCP: UInt16] = [:]
+
+    /// Ranges as the display reports them. A gain's neutral point and a
+    /// feature's maximum are both display-specific, and neither can be assumed:
+    /// on the panel this was written against, gain neutral is 50, not 100.
+    private(set) var maxima: [VCP: UInt16] = [:]
+
+    /// True while values are being read off the bus, which takes long enough to
+    /// be worth showing.
+    private(set) var isReading = false
 
     private(set) var profiles: [Profile] = []
     private(set) var hotKeys: [HotKeyAction: HotKeyBinding] = [:]
@@ -47,15 +57,18 @@ final class AppModel {
             return
         }
 
-        refreshDisplays(applyRemembered: store.restoresOnLaunch)
+        refreshDisplays()
         observeDisplayChanges()
         wireHotKeys()
         wireSchedule()
 
-        // A rule that came due while the app was closed still describes what
-        // the panel should look like now, so it is applied at launch too.
+        // A schedule rule describes what the panel should look like now, so it
+        // wins over a fixed launch profile when both are set.
         if store.isScheduleEnabled {
             schedule.applyCurrentRule()
+        } else if let id = store.launchProfileID,
+                  let profile = profiles.first(where: { $0.id == id }) {
+            apply(profile)
         }
     }
 
@@ -73,15 +86,70 @@ final class AppModel {
             selectedDisplayID = displays.first?.id
         }
 
-        loadValues()
+        Task { await syncFromDisplay() }
+    }
 
-        if applyRemembered, let display = selectedDisplay {
-            for feature in VCP.restorable {
-                if let value = values[feature] {
-                    ddc.set(feature, to: value, on: display)
-                }
-            }
+    /// Features this display advertises and Kadran knows how to present.
+    var supportedFeatures: [VCP] {
+        guard let display = selectedDisplay else { return [] }
+        return VCP.allCases.filter { display.capabilities.supports($0) }
+    }
+
+    func supportedFeatures(in group: VCP.Group, includingAdvanced: Bool = false) -> [VCP] {
+        supportedFeatures.filter { $0.group == group && (includingAdvanced || !$0.isAdvanced) }
+    }
+
+    func allowedValues(for feature: VCP) -> [UInt8] {
+        selectedDisplay?.capabilities.allowedValues(for: feature) ?? []
+    }
+
+    func maximum(for feature: VCP) -> UInt16 {
+        maxima[feature] ?? 100
+    }
+
+    /// Kelvin per unit of `colorTemperature` on this display.
+    ///
+    /// 50 K is both the most common step and what this panel reports, but it is
+    /// read rather than assumed, since getting it wrong silently shifts every
+    /// colour temperature the app sets.
+    var colorTemperatureStep: Int {
+        let reported = Int(values[.colorTemperatureIncrement] ?? 0)
+        return reported > 0 ? reported : 50
+    }
+
+    /// Converts kelvin to the units VCP 0x0C expects on this display.
+    func colorTemperatureUnits(fromKelvin kelvin: Int) -> UInt16 {
+        UInt16(max(0, (kelvin - 3000) / colorTemperatureStep))
+    }
+
+    func kelvin(fromUnits units: UInt16) -> Int {
+        3000 + Int(units) * colorTemperatureStep
+    }
+
+    /// Reads every supported feature off the display.
+    ///
+    /// Off the main actor because each read is a bus round trip of tens of
+    /// milliseconds, and a display with a dozen features would otherwise block
+    /// the UI for most of a second.
+    func syncFromDisplay() async {
+        guard let display = selectedDisplay else {
+            values = [:]
+            maxima = [:]
+            return
         }
+
+        isReading = true
+        defer { isReading = false }
+
+        let features = supportedFeatures.filter { $0.kind != .command }
+        let readings = await Task.detached { [ddc] in
+            features.reduce(into: [VCP: DDCService.FeatureValue]()) { result, feature in
+                result[feature] = ddc.read(feature, from: display)
+            }
+        }.value
+
+        values = readings.mapValues(\.current)
+        maxima = readings.mapValues(\.maximum)
     }
 
     private func observeDisplayChanges() {
@@ -96,42 +164,38 @@ final class AppModel {
         }
     }
 
-    private func loadValues() {
-        guard let display = selectedDisplay else {
-            values = [:]
-            return
-        }
-        var loaded = store.values(for: display.persistentKey)
-
-        // A slider needs a position even before anything has been written, so
-        // unknown features start at the DDC/CI midpoint rather than at zero.
-        for feature in VCP.sliders where loaded[feature] == nil {
-            loaded[feature] = feature == .luminance ? 50 : 50
-        }
-        values = loaded
-    }
-
     func selectDisplay(_ id: CGDirectDisplayID) {
         selectedDisplayID = id
-        loadValues()
+        Task { await syncFromDisplay() }
     }
 
     // MARK: - Control
 
     func set(_ feature: VCP, to value: UInt16) {
         guard let display = selectedDisplay else { return }
-        if !feature.isCommand {
+        if feature.kind != .command {
             values[feature] = value
         }
         ddc.set(feature, to: value, on: display)
-        store.setValues(values, for: display.persistentKey)
+    }
+
+    /// Sends a command feature, then re-reads, since a reset changes values
+    /// this app never wrote.
+    func run(_ command: VCP) {
+        guard let display = selectedDisplay else { return }
+        ddc.set(command, to: 1, on: display)
+        Task {
+            // Give the display time to settle before believing what it reports.
+            try? await Task.sleep(for: .milliseconds(500))
+            await syncFromDisplay()
+        }
     }
 
     /// Nudges a feature by `delta`, clamped to its range. Backs the keyboard
     /// shortcuts, where the caller has no idea what the current value is.
     func adjust(_ feature: VCP, by delta: Int) {
-        let current = Int(values[feature] ?? 50)
-        let bounded = min(max(current + delta, 0), Int(feature.maxValue))
+        guard let current = values[feature] else { return }
+        let bounded = min(max(Int(current) + delta, 0), Int(maximum(for: feature)))
         set(feature, to: UInt16(bounded))
     }
 
@@ -173,8 +237,8 @@ final class AppModel {
     private func perform(_ action: HotKeyAction) {
         let step = store.hotKeyStep
         switch action {
-        case .brightnessUp: adjust(.luminance, by: step)
-        case .brightnessDown: adjust(.luminance, by: -step)
+        case .brightnessUp: adjust(.brightness, by: step)
+        case .brightnessDown: adjust(.brightness, by: -step)
         case .contrastUp: adjust(.contrast, by: step)
         case .contrastDown: adjust(.contrast, by: -step)
         case .cycleProfile: cycleProfile()
@@ -242,30 +306,37 @@ final class AppModel {
     func apply(_ profile: Profile) {
         lastAppliedProfileIndex = profiles.firstIndex(where: { $0.id == profile.id })
         guard let display = selectedDisplay else { return }
-        // A command carries no state, so it is sent but never recorded: storing
-        // it would put a phantom "reset colour = 1" in the remembered values and
-        // re-send it on every launch.
-        for (feature, value) in profile.values.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-            if !feature.isCommand {
-                values[feature] = value
+        // Only what this display advertises: a profile is portable between
+        // monitors, so it may well name features this one does not implement.
+        for (feature, stored) in profile.values.sorted(by: { $0.key.rawValue < $1.key.rawValue })
+        where display.capabilities.supports(feature) {
+            // Colour temperature is stored in kelvin so a profile means the same
+            // thing on any display; every other feature is stored raw.
+            let value = feature == .colorTemperature
+                ? colorTemperatureUnits(fromKelvin: Int(stored))
+                : stored
+            let clamped = min(value, maximum(for: feature))
+            if feature.kind != .command {
+                values[feature] = clamped
             }
-            ddc.set(feature, to: value, on: display)
+            ddc.set(feature, to: clamped, on: display)
         }
-        store.setValues(values, for: display.persistentKey)
-    }
-
-    /// Asks the monitor to return to its factory colour settings.
-    func resetColour() {
-        set(.restoreColorDefaults, to: 1)
     }
 
     /// Captures the current values as a new profile.
     func captureProfile(named name: String, symbolName: String = "square.on.square") {
-        let captured = VCP.restorable.reduce(into: [VCP: UInt16]()) { result, feature in
-            result[feature] = values[feature]
-        }
-        profiles.append(Profile(name: name, symbolName: symbolName, values: captured))
+        profiles.append(Profile(name: name, symbolName: symbolName, values: capturedValues()))
         store.setProfiles(profiles)
+    }
+
+    /// Current values in the form profiles store them.
+    private func capturedValues() -> [VCP: UInt16] {
+        VCP.profilable.reduce(into: [VCP: UInt16]()) { result, feature in
+            guard let value = values[feature] else { return }
+            result[feature] = feature == .colorTemperature
+                ? UInt16(kelvin(fromUnits: value))
+                : value
+        }
     }
 
     func deleteProfile(_ profile: Profile) {
@@ -289,15 +360,13 @@ final class AppModel {
     /// Overwrites a profile with the values currently on screen.
     func updateProfileToCurrentValues(_ profile: Profile) {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
-        profiles[index].values = VCP.restorable.reduce(into: [VCP: UInt16]()) { result, feature in
-            result[feature] = values[feature]
-        }
+        profiles[index].values = capturedValues()
         store.setProfiles(profiles)
     }
 
-    var restoresOnLaunch: Bool {
-        get { store.restoresOnLaunch }
-        set { store.restoresOnLaunch = newValue }
+    var launchProfileID: UUID? {
+        get { store.launchProfileID }
+        set { store.launchProfileID = newValue }
     }
 }
 

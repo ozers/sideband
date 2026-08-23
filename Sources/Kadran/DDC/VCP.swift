@@ -1,99 +1,220 @@
 import Foundation
 
-/// A DDC/CI VCP feature this app can drive.
+/// A DDC/CI VCP feature.
 ///
-/// Only features confirmed writable on the MPG 491C are surfaced by default;
-/// `volume` is included but unverified, because the monitor's speakers were
-/// never exercised during the capability probe.
+/// Membership here means Kadran knows how to present the feature, not that any
+/// particular display implements it. What a display actually supports comes from
+/// its capability string; see `DisplayCapabilities`.
 enum VCP: UInt8, CaseIterable, Codable, Sendable {
-    case luminance = 0x10
+    // Values
+    case brightness = 0x10
     case contrast = 0x12
-    case red = 0x16
-    case green = 0x18
-    case blue = 0x1A
+    case colorTemperature = 0x0C
+    case colorPreset = 0x14
+    case redGain = 0x16
+    case greenGain = 0x18
+    case blueGain = 0x1A
+    case redBlackLevel = 0x6C
+    case greenBlackLevel = 0x6E
+    case blueBlackLevel = 0x70
     case volume = 0x62
+    case mute = 0x8D
+    case displayApplication = 0xDC
     case inputSource = 0x60
 
-    /// Selects a colour preset. MCCS defines the values, so they mean the same
-    /// thing on any monitor that implements the feature:
-    /// 0x01 sRGB, 0x02 native, 0x03 4000K, 0x04 5000K, 0x05 6500K,
-    /// 0x06 7500K, 0x07 8200K, 0x08 9300K, 0x0B–0x0D user presets.
-    ///
-    /// Preferred over the RGB gain registers for anything colour-temperature
-    /// shaped: the values are defined rather than guessed, and returning to
-    /// neutral is a matter of selecting 6500K rather than hoping a gain of 100
-    /// happens to be the neutral point.
-    case colorPreset = 0x14
+    // Read-only
+    case usageTime = 0xC0
 
-    /// Sharpness / edge enhancement. Standard in MCCS, but the value range is
-    /// vendor-specific and unreadable here, so the slider spans the full byte.
-    case sharpness = 0x87
+    /// Kelvin per unit of `colorTemperature`. Read to interpret that feature;
+    /// never shown, since a step size is not something anyone sets.
+    case colorTemperatureIncrement = 0x0B
 
-    /// How the panel maps a non-native signal — the "screen size" or aspect
-    /// entry in most OSDs. MCCS values: 1 no scaling, 2 max image without
-    /// aspect distortion, 3 max image with distortion, 4 max vertical,
-    /// 5 max horizontal, 6 aspect-correct linear expansion.
-    case displayScaling = 0x86
-
-    /// Write-only command, not a value: any write tells the monitor to reset
-    /// its colour settings to the factory state.
-    ///
-    /// This is the only reliable way back to neutral colour. Writing 100 to
-    /// each gain does not do it — the neutral point of a gain register is
-    /// vendor-specific and unreadable on a display that answers no reads, and
-    /// touching a gain at all switches most monitors into a custom colour mode
-    /// that a factory preset cannot be re-entered from by writing gains.
+    // Commands
+    case restoreFactoryDefaults = 0x04
+    case restoreBrightnessContrast = 0x05
     case restoreColorDefaults = 0x08
+
+    /// How a feature is presented and written.
+    enum Kind {
+        /// A number over a range, shown as a slider.
+        case continuous
+        /// One of a fixed set, shown as a menu. Which values are offered comes
+        /// from the display's capability string, not from this app.
+        case enumerated
+        /// Writing any value performs an action; there is no state to show.
+        case command
+        /// Reported by the display, never written.
+        case readOnly
+    }
+
+    var kind: Kind {
+        switch self {
+        case .restoreFactoryDefaults, .restoreBrightnessContrast, .restoreColorDefaults:
+            return .command
+        case .colorPreset, .displayApplication, .inputSource, .mute:
+            return .enumerated
+        case .usageTime, .colorTemperatureIncrement:
+            return .readOnly
+        default:
+            return .continuous
+        }
+    }
 
     var label: String {
         switch self {
-        case .luminance: return "Brightness"
+        case .brightness: return "Brightness"
         case .contrast: return "Contrast"
-        case .red: return "Red"
-        case .green: return "Green"
-        case .blue: return "Blue"
-        case .volume: return "Volume"
+        case .colorTemperature: return "Colour temperature"
         case .colorPreset: return "Colour preset"
-        case .sharpness: return "Sharpness"
-        case .displayScaling: return "Screen size"
+        case .redGain: return "Red"
+        case .greenGain: return "Green"
+        case .blueGain: return "Blue"
+        case .redBlackLevel: return "Red black level"
+        case .greenBlackLevel: return "Green black level"
+        case .blueBlackLevel: return "Blue black level"
+        case .volume: return "Volume"
+        case .mute: return "Mute"
+        case .displayApplication: return "Picture mode"
         case .inputSource: return "Input"
+        case .usageTime: return "Panel hours"
+        case .colorTemperatureIncrement: return "Colour temperature step"
+        case .restoreFactoryDefaults: return "Reset everything"
+        case .restoreBrightnessContrast: return "Reset brightness and contrast"
         case .restoreColorDefaults: return "Reset colour"
         }
     }
 
     var symbolName: String {
         switch self {
-        case .luminance: return "sun.max"
+        case .brightness: return "sun.max"
         case .contrast: return "circle.lefthalf.filled"
-        case .red, .green, .blue: return "drop"
+        case .colorTemperature: return "thermometer.sun"
+        case .colorPreset: return "swatchpalette"
+        case .redGain, .greenGain, .blueGain: return "drop"
+        case .redBlackLevel, .greenBlackLevel, .blueBlackLevel: return "drop.halffull"
         case .volume: return "speaker.wave.2"
-        case .colorPreset: return "thermometer.sun"
-        case .sharpness: return "triangle"
-        case .displayScaling: return "aspectratio"
+        case .mute: return "speaker.slash"
+        case .displayApplication: return "photo"
         case .inputSource: return "cable.connector"
-        case .restoreColorDefaults: return "arrow.counterclockwise"
+        case .usageTime, .colorTemperatureIncrement: return "clock"
+        case .restoreFactoryDefaults, .restoreBrightnessContrast, .restoreColorDefaults:
+            return "arrow.counterclockwise"
         }
     }
 
-    /// Upper bound used by the UI. The monitor never answers a "max" read, so
-    /// these are the DDC/CI conventional maxima rather than measured values.
-    var maxValue: UInt16 {
+    /// Grouping for the UI, so related controls stay together.
+    enum Group: Int, CaseIterable {
+        case picture, colour, calibration, audio, source, info
+
+        var title: String {
+            switch self {
+            case .picture: return "Picture"
+            case .colour: return "Colour"
+            case .calibration: return "Calibration"
+            case .audio: return "Audio"
+            case .source: return "Source"
+            case .info: return "Display"
+            }
+        }
+    }
+
+    var group: Group {
         switch self {
-        case .inputSource, .restoreColorDefaults, .colorPreset, .sharpness, .displayScaling:
-            return 255
-        default: return 100
+        case .brightness, .contrast, .displayApplication: return .picture
+        case .colorTemperature, .colorPreset, .restoreColorDefaults: return .colour
+        case .redGain, .greenGain, .blueGain,
+             .redBlackLevel, .greenBlackLevel, .blueBlackLevel:
+            return .calibration
+        case .volume, .mute: return .audio
+        case .inputSource: return .source
+        case .usageTime, .colorTemperatureIncrement, .restoreFactoryDefaults,
+             .restoreBrightnessContrast:
+            return .info
         }
     }
 
-    /// True for features that are commands rather than values: writing one
-    /// performs an action, and there is no state afterwards worth remembering.
-    var isCommand: Bool { self == .restoreColorDefaults }
+    /// Features hidden until the user asks for them.
+    ///
+    /// Black levels shift the bottom of the gamma curve and are easy to set
+    /// wrong in a way that looks like a broken monitor rather than a bad
+    /// setting, and switching input can leave the Mac looking at a display that
+    /// no longer shows it.
+    var isAdvanced: Bool {
+        switch self {
+        case .redBlackLevel, .greenBlackLevel, .blueBlackLevel, .inputSource,
+             .restoreFactoryDefaults, .colorTemperatureIncrement:
+            return true
+        default:
+            return false
+        }
+    }
 
-    /// Features presented as sliders, in display order.
-    static let sliders: [VCP] = [.luminance, .contrast, .red, .green, .blue, .volume]
+    /// Features a profile may carry.
+    ///
+    /// Input is excluded: a profile that changes input can leave the user
+    /// staring at a blank panel with no way back to the app.
+    static var profilable: [VCP] {
+        allCases.filter { $0.kind != .readOnly && $0 != .inputSource && $0.kind != .command }
+    }
 
-    /// Features restored on launch and applied by profiles.
-    /// Input source is deliberately excluded: writing it can blank the screen
-    /// and strand the user on a dead input.
-    static let restorable: [VCP] = [.luminance, .contrast, .red, .green, .blue]
+    /// Names for the values of an enumerated feature, where MCCS defines them.
+    ///
+    /// Only the values a display advertises are ever shown, so an entry missing
+    /// here appears by its raw number rather than being hidden.
+    func valueName(_ value: UInt8) -> String? {
+        switch self {
+        case .colorPreset:
+            switch value {
+            case 0x01: return "sRGB"
+            case 0x02: return "Native"
+            case 0x03: return "4000 K"
+            case 0x04: return "5000 K"
+            case 0x05: return "6500 K"
+            case 0x06: return "7500 K"
+            case 0x07: return "8200 K"
+            case 0x08: return "9300 K"
+            case 0x09: return "10000 K"
+            case 0x0A: return "11500 K"
+            case 0x0B: return "User 1"
+            case 0x0C: return "User 2"
+            case 0x0D: return "User 3"
+            default: return nil
+            }
+        case .displayApplication:
+            switch value {
+            case 0x00: return "Standard"
+            case 0x01: return "Productivity"
+            case 0x02: return "Mixed"
+            case 0x03: return "Movie"
+            case 0x04: return "User"
+            case 0x05: return "Games"
+            case 0x06: return "Sports"
+            case 0x07: return "Professional"
+            case 0x08: return "Text"
+            case 0x09: return "Video"
+            case 0x0A: return "Photo"
+            default: return nil
+            }
+        case .inputSource:
+            switch value {
+            case 0x01: return "VGA 1"
+            case 0x03: return "DVI 1"
+            case 0x04: return "DVI 2"
+            case 0x0F: return "DisplayPort 1"
+            case 0x10: return "DisplayPort 2"
+            case 0x11: return "HDMI 1"
+            case 0x12: return "HDMI 2"
+            case 0x1B: return "USB-C"
+            default: return nil
+            }
+        case .mute:
+            switch value {
+            case 0x01: return "Muted"
+            case 0x02: return "Unmuted"
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
 }

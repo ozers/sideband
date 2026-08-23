@@ -4,6 +4,7 @@ struct MenuContent: View {
     @Bindable var model: AppModel
     @State private var newProfileName = ""
     @State private var isNamingProfile = false
+    @State private var showsAdvanced = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12,9 +13,9 @@ struct MenuContent: View {
             } else if model.displays.isEmpty {
                 noDisplays
             } else {
-                displayPicker
+                header
                 Divider()
-                sliders
+                controls
                 Divider()
                 profileRow
                 Divider()
@@ -22,7 +23,7 @@ struct MenuContent: View {
             }
         }
         .padding(14)
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     // MARK: - States
@@ -59,18 +60,28 @@ struct MenuContent: View {
     // MARK: - Sections
 
     @ViewBuilder
-    private var displayPicker: some View {
-        if model.displays.count > 1 {
-            Picker("Display", selection: displaySelection) {
-                ForEach(model.displays) { display in
-                    Text(display.name).tag(display.id)
+    private var header: some View {
+        HStack {
+            if model.displays.count > 1 {
+                Picker("Display", selection: displaySelection) {
+                    ForEach(model.displays) { display in
+                        Text(display.name).tag(display.id)
+                    }
                 }
+                .labelsHidden()
+            } else if let display = model.selectedDisplay {
+                Text(display.name)
+                    .font(.headline)
+                    .lineLimit(1)
             }
-            .labelsHidden()
-        } else if let display = model.selectedDisplay {
-            Text(display.name)
-                .font(.headline)
-                .lineLimit(1)
+
+            Spacer()
+
+            if model.isReading {
+                ProgressView()
+                    .controlSize(.small)
+                    .help("Reading current values from the display")
+            }
         }
     }
 
@@ -81,33 +92,78 @@ struct MenuContent: View {
         )
     }
 
-    private var sliders: some View {
-        VStack(spacing: 10) {
-            ForEach(VCP.sliders, id: \.self) { feature in
-                FeatureSlider(
-                    feature: feature,
-                    value: binding(for: feature)
-                )
-            }
-
-            HStack {
-                Spacer()
-                Button("Reset colour") { model.resetColour() }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .help(
-                        """
-                        Returns the monitor to its factory colour settings.                         The gain sliders cannot do this on their own, because                         the neutral value of a gain is unreadable.
-                        """
-                    )
+    /// Only what the display advertises, grouped.
+    ///
+    /// A control that is present but does nothing is worse than a missing one:
+    /// it makes the display look broken rather than the app look limited.
+    private var controls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(VCP.Group.allCases, id: \.self) { group in
+                let features = model.supportedFeatures(in: group, includingAdvanced: showsAdvanced)
+                if !features.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(group.title)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(features, id: \.self) { feature in
+                            control(for: feature)
+                        }
+                    }
+                }
             }
         }
     }
 
-    private func binding(for feature: VCP) -> Binding<Double> {
+    @ViewBuilder
+    private func control(for feature: VCP) -> some View {
+        switch feature.kind {
+        case .continuous:
+            FeatureSlider(
+                feature: feature,
+                maximum: model.maximum(for: feature),
+                value: sliderBinding(for: feature)
+            )
+        case .enumerated:
+            FeaturePicker(
+                feature: feature,
+                options: model.allowedValues(for: feature),
+                value: pickerBinding(for: feature)
+            )
+        case .command:
+            Button(feature.label) { model.run(feature) }
+                .buttonStyle(.link)
+                .font(.caption)
+        case .readOnly:
+            if let value = model.values[feature] {
+                HStack {
+                    Image(systemName: feature.symbolName)
+                        .frame(width: 16)
+                    Text(feature.label)
+                        .font(.caption)
+                    Spacer()
+                    Text(readOnlyText(feature, value))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func readOnlyText(_ feature: VCP, _ value: UInt16) -> String {
+        feature == .usageTime ? "\(value) h" : "\(value)"
+    }
+
+    private func sliderBinding(for feature: VCP) -> Binding<Double> {
         Binding(
-            get: { Double(model.values[feature] ?? 50) },
+            get: { Double(model.values[feature] ?? 0) },
             set: { model.set(feature, to: UInt16($0.rounded())) }
+        )
+    }
+
+    private func pickerBinding(for feature: VCP) -> Binding<UInt8> {
+        Binding(
+            get: { UInt8(truncatingIfNeeded: model.values[feature] ?? 0) },
+            set: { model.set(feature, to: UInt16($0)) }
         )
     }
 
@@ -117,7 +173,7 @@ struct MenuContent: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 60), spacing: 6)], spacing: 6) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 62), spacing: 6)], spacing: 6) {
                 ForEach(model.profiles) { profile in
                     Button {
                         model.apply(profile)
@@ -147,11 +203,9 @@ struct MenuContent: View {
                         .disabled(newProfileName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             } else {
-                Button("Save current as profile…") {
-                    isNamingProfile = true
-                }
-                .buttonStyle(.link)
-                .font(.caption)
+                Button("Save current as profile…") { isNamingProfile = true }
+                    .buttonStyle(.link)
+                    .font(.caption)
             }
         }
     }
@@ -165,13 +219,23 @@ struct MenuContent: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button("Settings…") { openSettings() }
-                    .font(.caption)
-                Spacer()
-                quitButton
-            }
+        HStack(spacing: 10) {
+            Button(showsAdvanced ? "Fewer" : "More…") { showsAdvanced.toggle() }
+                .buttonStyle(.link)
+                .font(.caption)
+                .help("Black levels, input switching and a full reset")
+
+            Button("Refresh") { Task { await model.syncFromDisplay() } }
+                .buttonStyle(.link)
+                .font(.caption)
+                .help("Re-read the current values from the display")
+
+            Spacer()
+
+            Button("Settings…") { openSettings() }
+                .buttonStyle(.link)
+                .font(.caption)
+            quitButton
         }
     }
 
@@ -181,16 +245,15 @@ struct MenuContent: View {
 
     private var quitButton: some View {
         Button("Quit") { NSApplication.shared.terminate(nil) }
+            .buttonStyle(.link)
             .font(.caption)
     }
 }
 
-/// One labelled slider.
-///
-/// The trailing number is the value this app last wrote, not a value read back
-/// from the monitor — nothing here can confirm the panel agrees.
+/// One labelled slider, spanning the range the display reported.
 private struct FeatureSlider: View {
     let feature: VCP
+    let maximum: UInt16
     @Binding var value: Double
 
     var body: some View {
@@ -201,12 +264,44 @@ private struct FeatureSlider: View {
                 Text(feature.label)
                     .font(.caption)
                 Spacer()
-                Text("\(Int(value))")
+                Text(displayValue)
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            Slider(value: $value, in: 0...Double(feature.maxValue), step: 1)
+            Slider(value: $value, in: 0...Double(max(maximum, 1)), step: 1)
                 .controlSize(.small)
+        }
+    }
+
+    /// Colour temperature is stored as an offset from 3000 K in 50 K steps, so
+    /// the raw number would be meaningless on screen.
+    private var displayValue: String {
+        feature == .colorTemperature ? "\(3000 + Int(value) * 50) K" : "\(Int(value))"
+    }
+}
+
+/// A menu of exactly the values the display advertised.
+private struct FeaturePicker: View {
+    let feature: VCP
+    let options: [UInt8]
+    @Binding var value: UInt8
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: feature.symbolName)
+                .frame(width: 16)
+            Text(feature.label)
+                .font(.caption)
+            Spacer()
+            Picker("", selection: $value) {
+                ForEach(options, id: \.self) { option in
+                    Text(feature.valueName(option) ?? String(format: "0x%02X", option))
+                        .tag(option)
+                }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            .frame(maxWidth: 130)
         }
     }
 }

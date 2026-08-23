@@ -84,9 +84,9 @@ enum CLI {
               kadran set <feature> <value>         Set a feature (0–100)
               kadran set <feature> <value> --display <n>
 
-            Features: brightness, contrast, red, green, blue, volume, input,
-                      preset, sharpness, scaling, reset-colour, or any raw VCP
-                      code such as 0x87
+            Features: brightness, contrast, red, green, blue, volume, mute,
+                      input, preset, temperature, mode, reset-colour, or any raw
+                      VCP code such as 0xDC
             """
         )
     }
@@ -154,16 +154,17 @@ enum CLI {
 
     private static func parseFeature(_ token: String) -> VCP? {
         switch token.lowercased() {
-        case "brightness", "luminance": return .luminance
+        case "brightness", "luminance": return .brightness
         case "contrast": return .contrast
-        case "red": return .red
-        case "green": return .green
-        case "blue": return .blue
+        case "red": return .redGain
+        case "green": return .greenGain
+        case "blue": return .blueGain
         case "volume": return .volume
         case "input": return .inputSource
         case "preset", "colour-preset", "color-preset": return .colorPreset
-        case "sharpness": return .sharpness
-        case "scaling", "screen-size": return .displayScaling
+        case "temperature", "temp": return .colorTemperature
+        case "mode", "picture-mode": return .displayApplication
+        case "mute": return .mute
         case "reset-colour", "reset-color": return .restoreColorDefaults
         default: return nil
         }

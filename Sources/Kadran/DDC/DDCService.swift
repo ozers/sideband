@@ -22,6 +22,10 @@ struct DDCDisplay: Identifiable, @unchecked Sendable {
     let name: String
     fileprivate let service: UnsafeMutableRawPointer
 
+    /// What this display says it implements. Read once at discovery, since a
+    /// capability string cannot change without the display being reconnected.
+    var capabilities: DisplayCapabilities = .assumed
+
     /// Stable across reboots and cable swaps, unlike `CGDirectDisplayID`,
     /// so profiles and remembered values key off this.
     let persistentKey: String
@@ -100,14 +104,19 @@ final class DDCService: @unchecked Sendable {
             }
             retained.append(service)
 
-            results.append(
-                DDCDisplay(
-                    id: match.id,
-                    name: match.name,
-                    service: service,
-                    persistentKey: "\(identity.vendor)-\(identity.product)-\(identity.serial)"
-                )
+            var display = DDCDisplay(
+                id: match.id,
+                name: match.name,
+                service: service,
+                persistentKey: "\(identity.vendor)-\(identity.product)-\(identity.serial)"
             )
+            if case .string(let text) = readCapabilities(of: display),
+               let parsed = DisplayCapabilities(parsing: text) {
+                display.capabilities = parsed
+            } else {
+                logger.info("\(match.name) gave no usable capability string; assuming a minimal set")
+            }
+            results.append(display)
         }
 
         return results
@@ -242,9 +251,24 @@ final class DDCService: @unchecked Sendable {
         var maximum: UInt16
     }
 
-    /// Reads a VCP feature. Returns nil when the display does not answer, which
-    /// is common: plenty of monitors accept writes and ignore reads.
-    func read(code: UInt8, from display: DDCDisplay) -> FeatureValue? {
+    /// Reads a VCP feature. Returns nil when the display does not answer.
+    ///
+    /// Retried, because a dropped reply is routine on a bus this slow: an
+    /// isolated failure says nothing about whether the feature is supported,
+    /// and treating it as a refusal would make controls flicker in and out.
+    func read(code: UInt8, from display: DDCDisplay, attempts: Int = 3) -> FeatureValue? {
+        for attempt in 0..<max(1, attempts) {
+            if let value = readOnce(code: code, from: display) {
+                return value
+            }
+            if attempt < attempts - 1 {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+        return nil
+    }
+
+    private func readOnce(code: UInt8, from display: DDCDisplay) -> FeatureValue? {
         queue.sync {
             var request: [UInt8] = [
                 0x82,  // 0x80 | 2 payload bytes

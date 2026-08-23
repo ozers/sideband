@@ -14,36 +14,75 @@ struct Profile: Identifiable, Codable, Hashable, Sendable {
         self.values = values
     }
 
-    /// Starting set, chosen to be useful before the user has tuned anything.
+    /// Built-in profiles.
     ///
-    /// Only Night touches colour, and every other profile asks the monitor to
-    /// restore its factory colour instead of writing gains back. Writing 100 to
-    /// each channel is not a return to neutral: the neutral point of a gain
-    /// register is vendor-specific, unreadable on a display that answers no
-    /// reads, and often not 100 at all. `restoreColorDefaults` is the only
-    /// route back that does not depend on knowing it.
+    /// The brightness numbers are derived from published viewing standards
+    /// rather than picked by eye, then converted through this panel class's
+    /// measured SDR maximum of roughly 260 cd/m² at 100%:
+    ///
+    /// - Day: ISO 9241-303 puts a typical office at 120–150 cd/m².
+    /// - Dim: the same guidance puts a dark room at 80–100 cd/m².
+    /// - Movie: Rec.709 / BT.1886 mastering reference white is 100 cd/m² in a
+    ///   dim surround.
+    /// - Bright: ISO guidance for a well-lit room is 200–250 cd/m².
+    /// - Night: below the dark-room floor, paired with the warmest colour
+    ///   temperature the display offers, since lowering both luminance and
+    ///   correlated colour temperature is what reduces melanopic exposure in
+    ///   the evening.
+    ///
+    /// The conversion assumes a display in the same brightness class. On a
+    /// panel with a different maximum these are still reasonable starting
+    /// points, but they are no longer the cited luminances — which is why they
+    /// are a starting set the user edits, not a claim of calibration.
+    ///
+    /// Colour is set through colour temperature rather than RGB gains. Gains
+    /// have a neutral point that is neither documented nor guessable — on this
+    /// panel it is 50, not the 100 that looks like "full" — so a profile built
+    /// on gains cannot reliably return to neutral.
+    ///
+    /// There is deliberately no "Game" profile. Game modes change overdrive,
+    /// black equalisation, sharpness and saturation; none of that is reachable
+    /// over DDC, so such a profile would only be a brightness change wearing a
+    /// misleading name. Displays that expose their own picture modes offer the
+    /// real thing through the Picture mode control instead.
     static let defaults: [Profile] = [
         Profile(
             name: "Day",
             symbolName: "sun.max",
-            values: [.luminance: 90, .contrast: 50, .restoreColorDefaults: 1]
+            values: [.brightness: 50, .colorTemperature: kelvin(6500)]
         ),
         Profile(
-            name: "Night",
-            symbolName: "moon",
-            values: [.luminance: 25, .contrast: 45, .green: 92, .blue: 72]
+            name: "Dim",
+            symbolName: "cloud.sun",
+            values: [.brightness: 35, .colorTemperature: kelvin(6500)]
         ),
         Profile(
             name: "Movie",
             symbolName: "film",
-            values: [.luminance: 45, .contrast: 65, .restoreColorDefaults: 1]
+            values: [.brightness: 40, .colorTemperature: kelvin(6500)]
         ),
         Profile(
-            name: "Game",
-            symbolName: "gamecontroller",
-            values: [.luminance: 80, .contrast: 60, .restoreColorDefaults: 1]
+            name: "Bright",
+            symbolName: "sun.max.fill",
+            values: [.brightness: 85, .colorTemperature: kelvin(6500)]
+        ),
+        Profile(
+            name: "Night",
+            symbolName: "moon",
+            values: [.brightness: 25, .colorTemperature: kelvin(3000)]
         ),
     ]
+
+    /// Colour temperature is stored in kelvin, not in the units VCP 0x0C uses.
+    ///
+    /// MCCS defines that feature's value as an offset from 3000 K in steps given
+    /// by VCP 0x0B, and the step is display-specific. Storing raw units would
+    /// make a profile mean a different colour on a display with a different
+    /// step, so the conversion happens when the profile is applied, against the
+    /// step that display actually reports.
+    static func kelvin(_ temperature: Int) -> UInt16 {
+        UInt16(temperature)
+    }
 }
 
 /// `[VCP: UInt16]` is not directly Codable because the key is not a String, so

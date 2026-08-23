@@ -40,11 +40,16 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
                 }
 
-                Toggle("Restore values at launch", isOn: $model.restoresOnLaunch)
+                Picker("Apply at launch", selection: launchProfileBinding) {
+                    Text("Nothing").tag(UUID?.none)
+                    ForEach(model.profiles) { profile in
+                        Text(profile.name).tag(UUID?.some(profile.id))
+                    }
+                }
                 Text(
                     """
-                    Pushes the last values back to the display when Kadran starts. \
-                    Leave this off if you set brightness from the monitor's own menu.
+                    Current values are read from the display, so nothing needs \
+                    restoring. This is for starting the day in a chosen profile.
                     """
                 )
                 .font(.caption)
@@ -58,10 +63,14 @@ private struct GeneralSettings: View {
                 } else {
                     ForEach(model.displays) { display in
                         LabeledContent(display.name) {
-                            Text(display.persistentKey)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(display.capabilities.model ?? display.persistentKey)
+                                    .font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                                Text(capabilitySummary(display))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -69,6 +78,25 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Says where the feature list came from, because "12 features" and
+    /// "assumed, the display never answered" are very different situations for
+    /// anyone wondering why a control is missing.
+    private func capabilitySummary(_ display: DDCDisplay) -> String {
+        let capabilities = display.capabilities
+        guard capabilities.isFromDisplay else {
+            return "no capability string; assuming brightness and contrast"
+        }
+        let version = capabilities.mccsVersion.map { "MCCS \($0), " } ?? ""
+        return "\(version)\(capabilities.codes.count) features reported"
+    }
+
+    private var launchProfileBinding: Binding<UUID?> {
+        Binding(
+            get: { model.launchProfileID },
+            set: { model.launchProfileID = $0 }
+        )
     }
 
     private var launchBinding: Binding<Bool> {
@@ -188,7 +216,7 @@ private struct ProfileSettings: View {
     /// Brightness and contrast only: the full VCP set does not fit on one row,
     /// and those two are what distinguishes profiles in practice.
     private func summary(of profile: Profile) -> String {
-        let brightness = profile.values[.luminance].map(String.init) ?? "–"
+        let brightness = profile.values[.brightness].map(String.init) ?? "–"
         let contrast = profile.values[.contrast].map(String.init) ?? "–"
         return "B \(brightness)   C \(contrast)"
     }
