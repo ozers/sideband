@@ -15,6 +15,22 @@ struct Store {
         self.defaults = defaults
     }
 
+    // MARK: - Unwritable features
+
+    /// Features a display advertises but does not apply, remembered per display.
+    ///
+    /// The discovery costs the user a change that silently does nothing, so it
+    /// is worth keeping: without this the warning is forgotten at every launch
+    /// and the control looks functional again until they try it once more.
+    func unwritableFeatures(for displayKey: String) -> Set<VCP> {
+        let raw = defaults.array(forKey: "unwritable.\(displayKey)") as? [Int] ?? []
+        return Set(raw.compactMap { UInt8(exactly: $0).flatMap(VCP.init(rawValue:)) })
+    }
+
+    func setUnwritableFeatures(_ features: Set<VCP>, for displayKey: String) {
+        defaults.set(features.map { Int($0.rawValue) }, forKey: "unwritable.\(displayKey)")
+    }
+
     // MARK: - Profiles
 
     private let profilesKey = "profiles"

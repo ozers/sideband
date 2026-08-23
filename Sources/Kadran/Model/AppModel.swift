@@ -237,6 +237,8 @@ final class AppModel {
         isReading = true
         defer { isReading = false }
 
+        unwritableFeatures = store.unwritableFeatures(for: display.persistentKey)
+
         let features = supportedFeatures.filter { $0.kind != .command }
         let readings = await Task.detached { [ddc] in
             features.reduce(into: [VCP: DDCService.FeatureValue]()) { result, feature in
@@ -318,6 +320,7 @@ final class AppModel {
                 unwritableFeatures.insert(feature)
                 values[feature] = actual
             }
+            store.setUnwritableFeatures(unwritableFeatures, for: display.persistentKey)
         }
     }
 

@@ -120,15 +120,15 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
 
     var group: Group {
         switch self {
-        case .brightness, .contrast, .displayApplication: return .picture
+        case .brightness, .contrast, .displayApplication, .restoreBrightnessContrast:
+            return .picture
         case .colorTemperature, .colorPreset, .restoreColorDefaults: return .colour
         case .redGain, .greenGain, .blueGain,
              .redBlackLevel, .greenBlackLevel, .blueBlackLevel:
             return .calibration
         case .volume, .mute: return .audio
         case .inputSource: return .source
-        case .usageTime, .colorTemperatureIncrement, .restoreFactoryDefaults,
-             .restoreBrightnessContrast:
+        case .usageTime, .colorTemperatureIncrement, .restoreFactoryDefaults:
             return .info
         }
     }
