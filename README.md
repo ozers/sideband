@@ -1,12 +1,15 @@
 # Sideband
 
-A menu bar app for controlling external display brightness, contrast and colour
-over DDC/CI on Apple silicon Macs.
+Control your external display from the macOS menu bar — over DDC/CI, the I2C
+channel that runs alongside the video in a DisplayPort or HDMI cable.
+
+Sideband asks the display what it can do and shows only that, with the values it
+actually holds rather than the ones an app remembers writing.
 
 Built because MSI's own control software is Windows-only, and because DDC/CI is
 a standard the monitor speaks whether or not the vendor ships a Mac client.
 
-<!-- TODO: screenshot -->
+<img src="docs/panel.png" width="320" alt="The menu bar panel, showing the controls this display supports">
 
 ## What it does
 
@@ -41,7 +44,9 @@ Scripts/bundle.sh
 cp -r dist/Sideband.app /Applications/
 ```
 
-The app is signed ad-hoc, so the first launch needs a right-click → Open.
+There is no signed release yet. The build is signed ad-hoc, so the first launch
+needs a right-click → Open, and the app has to live in /Applications for macOS to
+accept it as a login item.
 
 ## Shortcuts
 
@@ -122,6 +127,8 @@ looks like "full". Colour is set through colour temperature instead, which is
 defined in kelvin and means the same thing everywhere.
 
 ## Adding your display
+
+<img src="docs/settings.png" width="420" alt="The Settings window, reporting what the attached display declared">
 
 Nothing to add. Sideband asks the display what it implements and builds the UI from
 the answer, so a monitor nobody has tested gets the right controls as long as it
