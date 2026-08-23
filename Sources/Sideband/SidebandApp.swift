@@ -3,24 +3,24 @@ import SwiftUI
 
 /// Chooses between the headless CLI and the menu bar UI.
 ///
-/// `App` supplies its own `main()`, so the choice cannot live inside `KadranApp`
+/// `App` supplies its own `main()`, so the choice cannot live inside `SidebandApp`
 /// without recursing into it. A separate entry point keeps both paths in one
-/// binary, which is what makes `kadran set …` usable for scripting and for
+/// binary, which is what makes `sideband set …` usable for scripting and for
 /// testing the DDC layer without a UI.
 @main
 enum Entry {
     static func main() {
         if CLI.run() { return }
-        KadranApp.main()
+        SidebandApp.main()
     }
 }
 
-struct KadranApp: App {
+struct SidebandApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
 
     var body: some Scene {
-        MenuBarExtra("Kadran", systemImage: "dial.medium") {
+        MenuBarExtra("Sideband", systemImage: "dial.medium") {
             MenuContent(model: model)
         }
         .menuBarExtraStyle(.window)

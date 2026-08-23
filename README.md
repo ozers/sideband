@@ -1,4 +1,4 @@
-# Kadran
+# Sideband
 
 A menu bar app for controlling external display brightness, contrast and colour
 over DDC/CI on Apple silicon Macs.
@@ -21,7 +21,7 @@ a standard the monitor speaks whether or not the vendor ships a Mac client.
 - Time-based profile switching, e.g. Night at 20:00
 - Launch at login, optionally into a chosen profile
 - A CLI in the same binary, for scripting and for interrogating a display:
-  `kadran caps`, `kadran get brightness`, `kadran set brightness 40`
+  `sideband caps`, `sideband get brightness`, `sideband set brightness 40`
 
 ## Requirements
 
@@ -35,10 +35,10 @@ system brightness keys for those.
 ## Install
 
 ```sh
-git clone https://github.com/ozers/kadran.git
-cd kadran
+git clone https://github.com/ozers/sideband.git
+cd sideband
 Scripts/bundle.sh
-cp -r dist/Kadran.app /Applications/
+cp -r dist/Sideband.app /Applications/
 ```
 
 The app is signed ad-hoc, so the first launch needs a right-click → Open.
@@ -46,7 +46,7 @@ The app is signed ad-hoc, so the first launch needs a right-click → Open.
 ## Shortcuts
 
 Shortcuts are registered through Carbon's `RegisterEventHotKey` rather than a
-global `NSEvent` monitor, so Kadran never asks for Accessibility permission.
+global `NSEvent` monitor, so Sideband never asks for Accessibility permission.
 A combination already owned by another app cannot be claimed; the Shortcuts tab
 marks those with a warning triangle instead of failing quietly.
 
@@ -55,9 +55,9 @@ marks those with a warning triangle instead of failing quietly.
 The bundled executable doubles as a command line tool:
 
 ```sh
-/Applications/Kadran.app/Contents/MacOS/Kadran list
-/Applications/Kadran.app/Contents/MacOS/Kadran set brightness 40
-/Applications/Kadran.app/Contents/MacOS/Kadran set contrast 55 --display 2
+/Applications/Sideband.app/Contents/MacOS/Sideband list
+/Applications/Sideband.app/Contents/MacOS/Sideband set brightness 40
+/Applications/Sideband.app/Contents/MacOS/Sideband set contrast 55 --display 2
 ```
 
 Features: `brightness`, `contrast`, `red`, `green`, `blue`, `volume`, `input`,
@@ -67,7 +67,7 @@ or a raw VCP code such as `0x12`.
 
 macOS exposes no public API for the DDC/CI I2C bus. The only route on Apple
 silicon is `IOAVServiceCreateWithService` / `IOAVServiceWriteI2C`, which are
-private IOKit symbols. Kadran resolves them at runtime with `dlsym` rather than
+private IOKit symbols. Sideband resolves them at runtime with `dlsym` rather than
 linking against them, so a macOS release that removes them turns the app into a
 polite "DDC unavailable" message instead of a launch-time crash.
 
@@ -78,7 +78,7 @@ take a release binary.
 
 **A capability string is a claim, not a guarantee.** A display may list a feature
 and then ignore every write to it — the MSI this was built against advertises
-picture mode and never changes it. Kadran reads back after you change a menu
+picture mode and never changes it. Sideband reads back after you change a menu
 control; a value that did not take retires the control and remembers that for
 next time. The Settings window names what was retired, so a feature missing here
 but present in the monitor's own menu is explained rather than merely absent. It
@@ -123,12 +123,12 @@ defined in kelvin and means the same thing everywhere.
 
 ## Adding your display
 
-Nothing to add. Kadran asks the display what it implements and builds the UI from
+Nothing to add. Sideband asks the display what it implements and builds the UI from
 the answer, so a monitor nobody has tested gets the right controls as long as it
 answers a capability request. There is no per-model table to contribute to.
 
-If something looks wrong, `kadran caps` prints the raw string — that plus
-`kadran list` is everything an issue needs.
+If something looks wrong, `sideband caps` prints the raw string — that plus
+`sideband list` is everything an issue needs.
 
 ## Not covered
 
@@ -143,7 +143,7 @@ cable connected.
 HDR is not a DDC feature at all. MCCS defines no code for it; on a Mac it is
 driven by the display mode the OS selects.
 
-Peak brightness is capped by the panel, not by Kadran. On a QD-OLED, full-screen
+Peak brightness is capped by the panel, not by Sideband. On a QD-OLED, full-screen
 white is limited by the automatic brightness limiter, so setting brightness to
 100 asks for the maximum and the panel still lands near its sustained figure.
 
@@ -151,7 +151,7 @@ white is limited by the automatic brightness limiter, so setting brightness to
 
 [MonitorControl](https://github.com/MonitorControl/MonitorControl) and
 [m1ddc](https://github.com/waydabber/m1ddc) solve the same access problem and
-were the reference for the Apple silicon service lookup. Kadran differs in
+were the reference for the Apple silicon service lookup. Sideband differs in
 being built around write-only displays and profile switching rather than around
 replacing the system brightness keys.
 

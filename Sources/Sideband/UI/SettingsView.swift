@@ -271,7 +271,7 @@ private struct ScheduleSettings: View {
                 } footer: {
                     Text(
                         """
-                        The rule in effect is also applied when Kadran starts, so \
+                        The rule in effect is also applied when Sideband starts, so \
                         a switch that came due while it was closed is not missed.
                         """
                     )

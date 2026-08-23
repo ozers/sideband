@@ -134,7 +134,7 @@ final class HotKeyCenter {
 
     private var registered: [HotKeyAction: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
-    private let logger = Logger(subsystem: "dev.kadran", category: "hotkey")
+    private let logger = Logger(subsystem: "com.github.ozers.Sideband", category: "hotkey")
 
     private init() {}
 
@@ -172,7 +172,7 @@ final class HotKeyCenter {
         registered.removeAll()
     }
 
-    private static let signature: OSType = 0x4B44_524E  // 'KDRN'
+    private static let signature: OSType = 0x4B44_524E  // 'SBND'
 
     private func installHandlerIfNeeded() {
         guard eventHandler == nil else { return }

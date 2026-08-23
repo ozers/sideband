@@ -2,7 +2,7 @@ import Foundation
 
 /// A DDC/CI VCP feature.
 ///
-/// Membership here means Kadran knows how to present the feature, not that any
+/// Membership here means Sideband knows how to present the feature, not that any
 /// particular display implements it. What a display actually supports comes from
 /// its capability string; see `DisplayCapabilities`.
 enum VCP: UInt8, CaseIterable, Codable, Sendable {

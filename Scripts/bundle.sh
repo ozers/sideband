@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Builds Kadran.app from the SwiftPM product.
+# Builds Sideband.app from the SwiftPM product.
 #
 # SwiftPM emits a bare executable, but a menu bar app needs a bundle: LSUIElement
 # is what keeps it out of the Dock, and NSStatusItem needs a bundle identifier to
@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 OUT_DIR="${1:-dist}"
-APP="$OUT_DIR/Kadran.app"
+APP="$OUT_DIR/Sideband.app"
 # --always is deliberately absent: with no tags it returns a commit hash, which
 # is not a valid CFBundleShortVersionString and makes the app look unversioned
 # in Finder. Tag a release to change this.
@@ -26,7 +26,7 @@ echo "Assembling $APP…"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cp .build/release/Kadran "$APP/Contents/MacOS/Kadran"
+cp .build/release/Sideband "$APP/Contents/MacOS/Sideband"
 
 if [ -f Resources/AppIcon.icns ]; then
     cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -39,10 +39,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>            <string>Kadran</string>
-    <key>CFBundleDisplayName</key>     <string>Kadran</string>
-    <key>CFBundleIdentifier</key>      <string>dev.kadran.Kadran</string>
-    <key>CFBundleExecutable</key>      <string>Kadran</string>
+    <key>CFBundleName</key>            <string>Sideband</string>
+    <key>CFBundleDisplayName</key>     <string>Sideband</string>
+    <key>CFBundleIdentifier</key>      <string>com.github.ozers.Sideband</string>
+    <key>CFBundleExecutable</key>      <string>Sideband</string>
     <key>CFBundlePackageType</key>     <string>APPL</string>
     <key>CFBundleIconFile</key>        <string>AppIcon</string>
     <key>CFBundleShortVersionString</key> <string>$VERSION</string>

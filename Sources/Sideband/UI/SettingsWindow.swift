@@ -29,11 +29,11 @@ final class SettingsWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Kadran Settings"
+        window.title = "Sideband Settings"
         window.contentView = NSHostingView(rootView: SettingsView(model: model))
         window.isReleasedWhenClosed = false  // reused across openings
         window.center()
-        window.setFrameAutosaveName("dev.kadran.settings")
+        window.setFrameAutosaveName("com.github.ozers.Sideband.settings")
 
         self.window = window
         bringToFront(window)

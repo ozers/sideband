@@ -9,7 +9,7 @@ import os
 /// a stored flag. Turning it on the first time makes macOS show a notification
 /// that a new login item was added; that is the system's doing, not a bug.
 enum LoginItem {
-    private static let logger = Logger(subsystem: "dev.kadran", category: "loginitem")
+    private static let logger = Logger(subsystem: "com.github.ozers.Sideband", category: "loginitem")
 
     static var isEnabled: Bool {
         SMAppService.mainApp.status == .enabled

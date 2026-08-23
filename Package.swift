@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Kadran",
+    name: "Sideband",
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "CIOAVService"),
         .executableTarget(
-            name: "Kadran",
+            name: "Sideband",
             dependencies: ["CIOAVService"],
             linkerSettings: [
                 .linkedFramework("IOKit"),

@@ -43,7 +43,7 @@ final class ScheduleEngine {
     private var rules: [ScheduleRule] = []
     private var timer: Timer?
     private var lastFiredMinute: Int?
-    private let logger = Logger(subsystem: "dev.kadran", category: "schedule")
+    private let logger = Logger(subsystem: "com.github.ozers.Sideband", category: "schedule")
 
     func update(rules: [ScheduleRule], isEnabled: Bool) {
         self.rules = rules.filter(\.isEnabled)

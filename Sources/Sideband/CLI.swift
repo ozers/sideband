@@ -3,10 +3,10 @@ import Foundation
 /// Headless entry point, used for scripting and for verifying the DDC layer
 /// without launching the UI.
 ///
-///   kadran list
-///   kadran set brightness 40
-///   kadran set 0x12 55            (raw VCP code)
-///   kadran set brightness 40 --display 2
+///   sideband list
+///   sideband set brightness 40
+///   sideband set 0x12 55            (raw VCP code)
+///   sideband set brightness 40 --display 2
 enum CLI {
     /// Returns true when the arguments were handled and the app should not
     /// start its UI.
@@ -76,13 +76,13 @@ enum CLI {
     private static func printUsage() {
         print(
             """
-            kadran — DDC/CI control for external displays
+            sideband — DDC/CI control for external displays
 
-              kadran list                          List controllable displays
-              kadran caps                          Print the capability string
-              kadran get <feature>                 Read a feature's current and maximum
-              kadran set <feature> <value>         Set a feature (0–100)
-              kadran set <feature> <value> --display <n>
+              sideband list                          List controllable displays
+              sideband caps                          Print the capability string
+              sideband get <feature>                 Read a feature's current and maximum
+              sideband set <feature> <value>         Set a feature (0–100)
+              sideband set <feature> <value> --display <n>
 
             Features: brightness, contrast, red, green, blue, volume, mute,
                       input, preset, temperature, mode, reset-colour, or any raw

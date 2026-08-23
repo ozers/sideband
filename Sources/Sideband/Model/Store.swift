@@ -9,7 +9,7 @@ import os
 /// stale the moment someone touches the monitor's own menu.
 struct Store {
     private let defaults: UserDefaults
-    private let logger = Logger(subsystem: "dev.kadran", category: "store")
+    private let logger = Logger(subsystem: "com.github.ozers.Sideband", category: "store")
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -135,7 +135,7 @@ struct Store {
 
     // MARK: - Preferences
 
-    /// A profile to apply when Kadran starts, if any.
+    /// A profile to apply when Sideband starts, if any.
     ///
     /// Replaces the old "restore the values we remember" setting: with values
     /// read from the display there is nothing to restore, but choosing which

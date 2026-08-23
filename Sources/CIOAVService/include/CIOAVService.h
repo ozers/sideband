@@ -20,21 +20,21 @@
 /// which cannot cross an actor boundary and drags ownership questions into
 /// every call site. A void pointer plus an explicit release keeps the lifetime
 /// obvious on the Swift side.
-typedef void *KDNAVServiceRef;
+typedef void *SBAVServiceRef;
 
 /// Resolves the private symbols. Returns true once they are all available.
 /// Safe to call repeatedly; the lookup happens only on the first call.
-bool kdn_avservice_available(void);
+bool sb_avservice_available(void);
 
 /// Wraps IOAVServiceCreateWithService. Returns NULL if unavailable.
-/// Caller owns the result and must pass it to kdn_avservice_release.
-KDNAVServiceRef kdn_avservice_create(io_service_t service);
+/// Caller owns the result and must pass it to sb_avservice_release.
+SBAVServiceRef sb_avservice_create(io_service_t service);
 
-/// Releases a handle returned by kdn_avservice_create. NULL is ignored.
-void kdn_avservice_release(KDNAVServiceRef service);
+/// Releases a handle returned by sb_avservice_create. NULL is ignored.
+void sb_avservice_release(SBAVServiceRef service);
 
 /// Wraps IOAVServiceWriteI2C. Returns kIOReturnUnsupported if unavailable.
-IOReturn kdn_avservice_write_i2c(KDNAVServiceRef service,
+IOReturn sb_avservice_write_i2c(SBAVServiceRef service,
                                  uint32_t chipAddress,
                                  uint32_t offset,
                                  void *inputBuffer,
@@ -43,7 +43,7 @@ IOReturn kdn_avservice_write_i2c(KDNAVServiceRef service,
 /// Wraps IOAVServiceReadI2C. Returns kIOReturnUnsupported if unavailable.
 /// Kept even though this display never answers reads: other displays do, and
 /// the capability probe needs to be able to try.
-IOReturn kdn_avservice_read_i2c(KDNAVServiceRef service,
+IOReturn sb_avservice_read_i2c(SBAVServiceRef service,
                                 uint32_t chipAddress,
                                 uint32_t offset,
                                 void *outputBuffer,

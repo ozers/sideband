@@ -29,26 +29,26 @@ static void resolve(void) {
     atomic_store(&g_resolved, true);
 }
 
-bool kdn_avservice_available(void) {
+bool sb_avservice_available(void) {
     resolve();
     return atomic_load(&g_ok);
 }
 
-KDNAVServiceRef kdn_avservice_create(io_service_t service) {
+SBAVServiceRef sb_avservice_create(io_service_t service) {
     resolve();
     if (!atomic_load(&g_ok)) {
         return NULL;
     }
-    return (KDNAVServiceRef)g_create(kCFAllocatorDefault, service);
+    return (SBAVServiceRef)g_create(kCFAllocatorDefault, service);
 }
 
-void kdn_avservice_release(KDNAVServiceRef service) {
+void sb_avservice_release(SBAVServiceRef service) {
     if (service != NULL) {
         CFRelease((CFTypeRef)service);
     }
 }
 
-IOReturn kdn_avservice_write_i2c(KDNAVServiceRef service,
+IOReturn sb_avservice_write_i2c(SBAVServiceRef service,
                                  uint32_t chipAddress,
                                  uint32_t offset,
                                  void *inputBuffer,
@@ -60,7 +60,7 @@ IOReturn kdn_avservice_write_i2c(KDNAVServiceRef service,
     return g_write((CFTypeRef)service, chipAddress, offset, inputBuffer, inputBufferSize);
 }
 
-IOReturn kdn_avservice_read_i2c(KDNAVServiceRef service,
+IOReturn sb_avservice_read_i2c(SBAVServiceRef service,
                                 uint32_t chipAddress,
                                 uint32_t offset,
                                 void *outputBuffer,

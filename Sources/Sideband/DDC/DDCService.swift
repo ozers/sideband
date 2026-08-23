@@ -40,8 +40,8 @@ struct DDCDisplay: Identifiable, @unchecked Sendable {
 final class DDCService: @unchecked Sendable {
     static let shared = DDCService()
 
-    private let queue = DispatchQueue(label: "dev.kadran.ddc", qos: .userInitiated)
-    private let logger = Logger(subsystem: "dev.kadran", category: "ddc")
+    private let queue = DispatchQueue(label: "com.github.ozers.Sideband.ddc", qos: .userInitiated)
+    private let logger = Logger(subsystem: "com.github.ozers.Sideband", category: "ddc")
 
     /// Minimum spacing between two bus transactions.
     private let writeInterval: TimeInterval = 0.02
@@ -54,7 +54,7 @@ final class DDCService: @unchecked Sendable {
 
     private init() {}
 
-    var isSupported: Bool { kdn_avservice_available() }
+    var isSupported: Bool { sb_avservice_available() }
 
     // MARK: - Discovery
 
@@ -63,7 +63,7 @@ final class DDCService: @unchecked Sendable {
     /// Built-in panels are excluded: they are driven by the backlight APIs, not
     /// DDC, and have no I2C bus to talk to.
     func discoverDisplays() -> [DDCDisplay] {
-        guard kdn_avservice_available() else { return [] }
+        guard sb_avservice_available() else { return [] }
 
         releaseRetained()
 
@@ -98,7 +98,7 @@ final class DDCService: @unchecked Sendable {
                 continue
             }
             guard !results.contains(where: { $0.id == match.id }) else { continue }
-            guard let service = kdn_avservice_create(entry) else {
+            guard let service = sb_avservice_create(entry) else {
                 logger.warning("IOAVServiceCreateWithService returned NULL for \(match.name)")
                 continue
             }
@@ -124,7 +124,7 @@ final class DDCService: @unchecked Sendable {
 
     private func releaseRetained() {
         for service in retained {
-            kdn_avservice_release(service)
+            sb_avservice_release(service)
         }
         retained.removeAll()
     }
@@ -278,7 +278,7 @@ final class DDCService: @unchecked Sendable {
             request.append(request.reduce(0x6E ^ 0x51, ^))
 
             let writeResult = request.withUnsafeMutableBufferPointer { buffer in
-                kdn_avservice_write_i2c(
+                sb_avservice_write_i2c(
                     display.service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count)
                 )
             }
@@ -289,7 +289,7 @@ final class DDCService: @unchecked Sendable {
 
             var reply = [UInt8](repeating: 0, count: 16)
             let readResult = reply.withUnsafeMutableBufferPointer { buffer in
-                kdn_avservice_read_i2c(
+                sb_avservice_read_i2c(
                     display.service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count)
                 )
             }
@@ -373,7 +373,7 @@ final class DDCService: @unchecked Sendable {
         request.append(request.reduce(0x6E ^ 0x51, ^))
 
         let writeResult = request.withUnsafeMutableBufferPointer { buffer in
-            kdn_avservice_write_i2c(service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count))
+            sb_avservice_write_i2c(service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count))
         }
         guard writeResult == kIOReturnSuccess else {
             return .failure(.writeFailed(writeResult))
@@ -384,7 +384,7 @@ final class DDCService: @unchecked Sendable {
 
         var reply = [UInt8](repeating: 0, count: 64)
         let readResult = reply.withUnsafeMutableBufferPointer { buffer in
-            kdn_avservice_read_i2c(service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count))
+            sb_avservice_read_i2c(service, 0x37, 0x51, buffer.baseAddress, UInt32(buffer.count))
         }
         guard readResult == kIOReturnSuccess else {
             return .failure(.noReply(readResult))
@@ -426,7 +426,7 @@ final class DDCService: @unchecked Sendable {
         packet.append(checksum)
 
         return packet.withUnsafeMutableBufferPointer { buffer in
-            kdn_avservice_write_i2c(
+            sb_avservice_write_i2c(
                 service,
                 0x37,
                 UInt32(source),

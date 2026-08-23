@@ -184,7 +184,7 @@ final class AppModel {
         }
     }
 
-    /// Features this display advertises and Kadran knows how to present.
+    /// Features this display advertises and Sideband knows how to present.
     var supportedFeatures: [VCP] {
         guard let display = selectedDisplay else { return [] }
         return VCP.allCases.filter { display.capabilities.supports($0) }
