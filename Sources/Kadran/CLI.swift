@@ -19,6 +19,10 @@ enum CLI {
             list()
         case "set":
             set(Array(args.dropFirst()))
+        case "caps":
+            capabilities()
+        case "get":
+            get(Array(args.dropFirst()))
         case "help", "--help", "-h":
             printUsage()
         default:
@@ -28,17 +32,61 @@ enum CLI {
         return true
     }
 
+    private static func get(_ args: [String]) {
+        guard let token = args.first, let (code, label) = parseCode(token) else {
+            printUsage()
+            exit(2)
+        }
+        let displays = DDCService.shared.discoverDisplays()
+        guard let display = displays.first else {
+            print("No external display with a DDC bus found.")
+            return
+        }
+        guard let value = DDCService.shared.read(code: code, from: display) else {
+            print("\(label): no answer")
+            return
+        }
+        print("\(label): \(value.current) / \(value.maximum)")
+    }
+
+    private static func capabilities() {
+        let displays = DDCService.shared.discoverDisplays()
+        guard let display = displays.first else {
+            print("No external display with a DDC bus found.")
+            return
+        }
+        switch DDCService.shared.readCapabilities(of: display) {
+        case .string(let caps):
+            print(caps)
+        case .writeFailed(let code):
+            print("\(display.name): the bus refused the request (IOReturn \(hex(code))).")
+        case .noReply(let code):
+            print("\(display.name): no reply (IOReturn \(hex(code))).")
+            print("The display accepts writes but does not answer reads.")
+        case .malformed(let bytes):
+            print("\(display.name): unexpected reply.")
+            print(bytes.map { String(format: "%02X", $0) }.joined(separator: " "))
+        }
+    }
+
+    private static func hex(_ value: Int32) -> String {
+        String(format: "0x%08X", value)
+    }
+
     private static func printUsage() {
         print(
             """
             kadran — DDC/CI control for external displays
 
               kadran list                          List controllable displays
+              kadran caps                          Print the capability string
+              kadran get <feature>                 Read a feature's current and maximum
               kadran set <feature> <value>         Set a feature (0–100)
               kadran set <feature> <value> --display <n>
 
             Features: brightness, contrast, red, green, blue, volume, input,
-                      reset-colour, or a raw VCP code such as 0x12
+                      preset, sharpness, scaling, reset-colour, or any raw VCP
+                      code such as 0x87
             """
         )
     }
@@ -65,7 +113,7 @@ enum CLI {
             printUsage()
             exit(2)
         }
-        guard let feature = parseFeature(args[0]) else {
+        guard let (code, label) = parseCode(args[0]) else {
             FileHandle.standardError.write(Data("Unknown feature: \(args[0])\n".utf8))
             exit(2)
         }
@@ -82,13 +130,26 @@ enum CLI {
             exit(1)
         }
 
-        DDCService.shared.set(feature, to: value, on: displays[index])
+        DDCService.shared.setRaw(code: code, to: value, on: displays[index], label: label)
 
         // The write is queued on a background queue and the bus is asynchronous
         // with no acknowledgement, so give the transaction time to land before
         // the process exits.
         Thread.sleep(forTimeInterval: 0.2)
-        print("\(feature.label) -> \(value) on \(displays[index].name)")
+        print("\(label) -> \(value) on \(displays[index].name)")
+    }
+
+    /// Resolves a feature name or a raw VCP code.
+    ///
+    /// Raw codes are accepted even when they are not in `VCP`, because the
+    /// point of probing is to write codes the app does not yet know about.
+    private static func parseCode(_ token: String) -> (UInt8, String)? {
+        if let feature = parseFeature(token) {
+            return (feature.rawValue, feature.label)
+        }
+        let hex = token.hasPrefix("0x") ? String(token.dropFirst(2)) : token
+        guard let code = UInt8(hex, radix: 16) else { return nil }
+        return (code, String(format: "0x%02X", code))
     }
 
     private static func parseFeature(_ token: String) -> VCP? {
@@ -100,11 +161,11 @@ enum CLI {
         case "blue": return .blue
         case "volume": return .volume
         case "input": return .inputSource
+        case "preset", "colour-preset", "color-preset": return .colorPreset
+        case "sharpness": return .sharpness
+        case "scaling", "screen-size": return .displayScaling
         case "reset-colour", "reset-color": return .restoreColorDefaults
-        default:
-            let hex = token.hasPrefix("0x") ? String(token.dropFirst(2)) : token
-            guard let code = UInt8(hex, radix: 16) else { return nil }
-            return VCP(rawValue: code)
+        default: return nil
         }
     }
 }

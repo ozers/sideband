@@ -14,6 +14,27 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
     case volume = 0x62
     case inputSource = 0x60
 
+    /// Selects a colour preset. MCCS defines the values, so they mean the same
+    /// thing on any monitor that implements the feature:
+    /// 0x01 sRGB, 0x02 native, 0x03 4000K, 0x04 5000K, 0x05 6500K,
+    /// 0x06 7500K, 0x07 8200K, 0x08 9300K, 0x0B–0x0D user presets.
+    ///
+    /// Preferred over the RGB gain registers for anything colour-temperature
+    /// shaped: the values are defined rather than guessed, and returning to
+    /// neutral is a matter of selecting 6500K rather than hoping a gain of 100
+    /// happens to be the neutral point.
+    case colorPreset = 0x14
+
+    /// Sharpness / edge enhancement. Standard in MCCS, but the value range is
+    /// vendor-specific and unreadable here, so the slider spans the full byte.
+    case sharpness = 0x87
+
+    /// How the panel maps a non-native signal — the "screen size" or aspect
+    /// entry in most OSDs. MCCS values: 1 no scaling, 2 max image without
+    /// aspect distortion, 3 max image with distortion, 4 max vertical,
+    /// 5 max horizontal, 6 aspect-correct linear expansion.
+    case displayScaling = 0x86
+
     /// Write-only command, not a value: any write tells the monitor to reset
     /// its colour settings to the factory state.
     ///
@@ -32,6 +53,9 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
         case .green: return "Green"
         case .blue: return "Blue"
         case .volume: return "Volume"
+        case .colorPreset: return "Colour preset"
+        case .sharpness: return "Sharpness"
+        case .displayScaling: return "Screen size"
         case .inputSource: return "Input"
         case .restoreColorDefaults: return "Reset colour"
         }
@@ -43,6 +67,9 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
         case .contrast: return "circle.lefthalf.filled"
         case .red, .green, .blue: return "drop"
         case .volume: return "speaker.wave.2"
+        case .colorPreset: return "thermometer.sun"
+        case .sharpness: return "triangle"
+        case .displayScaling: return "aspectratio"
         case .inputSource: return "cable.connector"
         case .restoreColorDefaults: return "arrow.counterclockwise"
         }
@@ -52,7 +79,8 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
     /// these are the DDC/CI conventional maxima rather than measured values.
     var maxValue: UInt16 {
         switch self {
-        case .inputSource, .restoreColorDefaults: return 255
+        case .inputSource, .restoreColorDefaults, .colorPreset, .sharpness, .displayScaling:
+            return 255
         default: return 100
         }
     }
