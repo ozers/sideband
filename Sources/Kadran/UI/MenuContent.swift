@@ -89,6 +89,18 @@ struct MenuContent: View {
                     value: binding(for: feature)
                 )
             }
+
+            HStack {
+                Spacer()
+                Button("Reset colour") { model.resetColour() }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .help(
+                        """
+                        Returns the monitor to its factory colour settings.                         The gain sliders cannot do this on their own, because                         the neutral value of a gain is unreadable.
+                        """
+                    )
+            }
         }
     }
 
@@ -163,19 +175,8 @@ struct MenuContent: View {
         }
     }
 
-    /// Opens the Settings scene.
-    ///
-    /// `SettingsLink` would be the declarative route, but it cannot be used
-    /// here: the menu bar popover closes on focus loss, and the window it opens
-    /// would appear behind every other app since an accessory-policy app is
-    /// never frontmost. Activating first is what puts it in front.
     private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        if #available(macOS 14.0, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        SettingsWindowController.shared.show(model: model)
     }
 
     private var quitButton: some View {

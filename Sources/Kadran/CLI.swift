@@ -37,8 +37,8 @@ enum CLI {
               kadran set <feature> <value>         Set a feature (0–100)
               kadran set <feature> <value> --display <n>
 
-            Features: brightness, contrast, red, green, blue, volume, input
-                      or a raw VCP code such as 0x12
+            Features: brightness, contrast, red, green, blue, volume, input,
+                      reset-colour, or a raw VCP code such as 0x12
             """
         )
     }
@@ -100,6 +100,7 @@ enum CLI {
         case "blue": return .blue
         case "volume": return .volume
         case "input": return .inputSource
+        case "reset-colour", "reset-color": return .restoreColorDefaults
         default:
             let hex = token.hasPrefix("0x") ? String(token.dropFirst(2)) : token
             guard let code = UInt8(hex, radix: 16) else { return nil }

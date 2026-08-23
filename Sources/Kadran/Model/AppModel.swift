@@ -120,7 +120,9 @@ final class AppModel {
 
     func set(_ feature: VCP, to value: UInt16) {
         guard let display = selectedDisplay else { return }
-        values[feature] = value
+        if !feature.isCommand {
+            values[feature] = value
+        }
         ddc.set(feature, to: value, on: display)
         store.setValues(values, for: display.persistentKey)
     }
@@ -240,11 +242,21 @@ final class AppModel {
     func apply(_ profile: Profile) {
         lastAppliedProfileIndex = profiles.firstIndex(where: { $0.id == profile.id })
         guard let display = selectedDisplay else { return }
-        for (feature, value) in profile.values {
-            values[feature] = value
+        // A command carries no state, so it is sent but never recorded: storing
+        // it would put a phantom "reset colour = 1" in the remembered values and
+        // re-send it on every launch.
+        for (feature, value) in profile.values.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            if !feature.isCommand {
+                values[feature] = value
+            }
             ddc.set(feature, to: value, on: display)
         }
         store.setValues(values, for: display.persistentKey)
+    }
+
+    /// Asks the monitor to return to its factory colour settings.
+    func resetColour() {
+        set(.restoreColorDefaults, to: 1)
     }
 
     /// Captures the current values as a new profile.

@@ -15,28 +15,33 @@ struct Profile: Identifiable, Codable, Hashable, Sendable {
     }
 
     /// Starting set, chosen to be useful before the user has tuned anything.
-    /// Colour gains stay at 100 except in Night, where dropping blue is the
-    /// point; raising red or green instead would only cut peak brightness.
+    ///
+    /// Only Night touches colour, and every other profile asks the monitor to
+    /// restore its factory colour instead of writing gains back. Writing 100 to
+    /// each channel is not a return to neutral: the neutral point of a gain
+    /// register is vendor-specific, unreadable on a display that answers no
+    /// reads, and often not 100 at all. `restoreColorDefaults` is the only
+    /// route back that does not depend on knowing it.
     static let defaults: [Profile] = [
         Profile(
             name: "Day",
             symbolName: "sun.max",
-            values: [.luminance: 90, .contrast: 50, .red: 100, .green: 100, .blue: 100]
+            values: [.luminance: 90, .contrast: 50, .restoreColorDefaults: 1]
         ),
         Profile(
             name: "Night",
             symbolName: "moon",
-            values: [.luminance: 25, .contrast: 45, .red: 100, .green: 92, .blue: 72]
+            values: [.luminance: 25, .contrast: 45, .green: 92, .blue: 72]
         ),
         Profile(
             name: "Movie",
             symbolName: "film",
-            values: [.luminance: 45, .contrast: 65, .red: 100, .green: 100, .blue: 100]
+            values: [.luminance: 45, .contrast: 65, .restoreColorDefaults: 1]
         ),
         Profile(
             name: "Game",
             symbolName: "gamecontroller",
-            values: [.luminance: 80, .contrast: 60, .red: 100, .green: 100, .blue: 100]
+            values: [.luminance: 80, .contrast: 60, .restoreColorDefaults: 1]
         ),
     ]
 }

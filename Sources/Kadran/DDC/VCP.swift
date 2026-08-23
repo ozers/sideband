@@ -14,6 +14,16 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
     case volume = 0x62
     case inputSource = 0x60
 
+    /// Write-only command, not a value: any write tells the monitor to reset
+    /// its colour settings to the factory state.
+    ///
+    /// This is the only reliable way back to neutral colour. Writing 100 to
+    /// each gain does not do it — the neutral point of a gain register is
+    /// vendor-specific and unreadable on a display that answers no reads, and
+    /// touching a gain at all switches most monitors into a custom colour mode
+    /// that a factory preset cannot be re-entered from by writing gains.
+    case restoreColorDefaults = 0x08
+
     var label: String {
         switch self {
         case .luminance: return "Brightness"
@@ -23,6 +33,7 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
         case .blue: return "Blue"
         case .volume: return "Volume"
         case .inputSource: return "Input"
+        case .restoreColorDefaults: return "Reset colour"
         }
     }
 
@@ -33,6 +44,7 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
         case .red, .green, .blue: return "drop"
         case .volume: return "speaker.wave.2"
         case .inputSource: return "cable.connector"
+        case .restoreColorDefaults: return "arrow.counterclockwise"
         }
     }
 
@@ -40,10 +52,14 @@ enum VCP: UInt8, CaseIterable, Codable, Sendable {
     /// these are the DDC/CI conventional maxima rather than measured values.
     var maxValue: UInt16 {
         switch self {
-        case .inputSource: return 255
+        case .inputSource, .restoreColorDefaults: return 255
         default: return 100
         }
     }
+
+    /// True for features that are commands rather than values: writing one
+    /// performs an action, and there is no state afterwards worth remembering.
+    var isCommand: Bool { self == .restoreColorDefaults }
 
     /// Features presented as sliders, in display order.
     static let sliders: [VCP] = [.luminance, .contrast, .red, .green, .blue, .volume]

@@ -42,7 +42,19 @@ struct Store {
 
     private let profilesKey = "profiles"
 
+    /// Bumped when the shipped defaults change in a way that makes previously
+    /// saved copies wrong. Version 2 replaced colour gains of 100 in the
+    /// non-Night profiles with an explicit factory colour reset.
+    private static let currentProfilesVersion = 2
+
     func profiles() -> [Profile] {
+        let storedVersion = defaults.integer(forKey: "profilesVersion")
+        if storedVersion < Self.currentProfilesVersion {
+            defaults.set(Self.currentProfilesVersion, forKey: "profilesVersion")
+            defaults.removeObject(forKey: profilesKey)
+            return Profile.defaults
+        }
+
         guard let data = defaults.data(forKey: profilesKey) else { return Profile.defaults }
         do {
             return try JSONDecoder().decode([Profile].self, from: data)
