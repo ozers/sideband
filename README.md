@@ -79,8 +79,10 @@ take a release binary.
 **A capability string is a claim, not a guarantee.** A display may list a feature
 and then ignore every write to it — the MSI this was built against advertises
 picture mode and never changes it. Kadran reads back after you change a menu
-control, and a value that did not take marks the control as ignored, disables it
-and says so. It never writes on your behalf to find this out.
+control; a value that did not take retires the control and remembers that for
+next time. The Settings window names what was retired, so a feature missing here
+but present in the monitor's own menu is explained rather than merely absent. It
+never writes on your behalf to find this out.
 
 **Reads can fail, and are retried.** The DDC bus is slow and half duplex, and an
 individual reply gets dropped often enough that a single failure means nothing.

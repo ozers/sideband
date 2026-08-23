@@ -69,6 +69,11 @@ private struct GeneralSettings: View {
                                 Text(capabilitySummary(display))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+                                if let ignored = ignoredSummary(display) {
+                                    Text(ignored)
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                }
                             }
                         }
                     }
@@ -89,6 +94,19 @@ private struct GeneralSettings: View {
         }
         let version = capabilities.mccsVersion.map { "MCCS \($0), " } ?? ""
         return "\(version)\(capabilities.codes.count) features reported"
+    }
+
+    /// Names features the display advertises and then ignores, so their absence
+    /// from the menu bar panel is accounted for.
+    private func ignoredSummary(_ display: DDCDisplay) -> String? {
+        guard display.id == model.selectedDisplay?.id, !model.unwritableFeatures.isEmpty else {
+            return nil
+        }
+        let names = model.unwritableFeatures
+            .sorted { $0.rawValue < $1.rawValue }
+            .map(\.label)
+            .joined(separator: ", ")
+        return "advertised but ignored: \(names)"
     }
 
 }

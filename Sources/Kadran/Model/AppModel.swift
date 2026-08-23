@@ -190,8 +190,20 @@ final class AppModel {
         return VCP.allCases.filter { display.capabilities.supports($0) }
     }
 
+    /// Features to show in a group.
+    ///
+    /// Excludes anything the display has been seen to ignore. A control that
+    /// cannot change anything is not a control, and by this app's own rule —
+    /// show what the display supports — a feature the display only claims to
+    /// support does not qualify. The Settings window names them instead, so
+    /// their absence from a monitor whose own menu still offers them is
+    /// explained rather than merely noticed.
     func supportedFeatures(in group: VCP.Group, includingAdvanced: Bool = false) -> [VCP] {
-        supportedFeatures.filter { $0.group == group && (includingAdvanced || !$0.isAdvanced) }
+        supportedFeatures.filter {
+            $0.group == group
+                && (includingAdvanced || !$0.isAdvanced)
+                && !unwritableFeatures.contains($0)
+        }
     }
 
     func allowedValues(for feature: VCP) -> [UInt8] {
