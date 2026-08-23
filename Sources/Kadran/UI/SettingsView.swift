@@ -22,13 +22,12 @@ struct SettingsView: View {
 
 private struct GeneralSettings: View {
     @Bindable var model: AppModel
-    @State private var loginItemFailed = false
 
     var body: some View {
         Form {
             Section {
-                Toggle("Launch at login", isOn: launchBinding)
-                if loginItemFailed {
+                Toggle("Launch at login", isOn: $model.launchesAtLogin)
+                if model.loginItemRefused {
                     Text(
                         """
                         macOS refused the login item. This happens when the app \
@@ -40,7 +39,7 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
                 }
 
-                Picker("Apply at launch", selection: launchProfileBinding) {
+                Picker("Apply at launch", selection: $model.launchProfileID) {
                     Text("Nothing").tag(UUID?.none)
                     ForEach(model.profiles) { profile in
                         Text(profile.name).tag(UUID?.some(profile.id))
@@ -92,22 +91,6 @@ private struct GeneralSettings: View {
         return "\(version)\(capabilities.codes.count) features reported"
     }
 
-    private var launchProfileBinding: Binding<UUID?> {
-        Binding(
-            get: { model.launchProfileID },
-            set: { model.launchProfileID = $0 }
-        )
-    }
-
-    private var launchBinding: Binding<Bool> {
-        Binding(
-            get: { model.launchesAtLogin },
-            set: { wanted in
-                model.launchesAtLogin = wanted
-                loginItemFailed = model.launchesAtLogin != wanted
-            }
-        )
-    }
 }
 
 // MARK: - Shortcuts
@@ -143,11 +126,7 @@ private struct ShortcutSettings: View {
             }
 
             Section {
-                Stepper(
-                    "Step size: \(model.hotKeyStep)",
-                    value: Binding(get: { model.hotKeyStep }, set: { model.hotKeyStep = $0 }),
-                    in: 1...50
-                )
+                Stepper("Step size: \(model.hotKeyStep)", value: $model.hotKeyStep, in: 1...50)
             } footer: {
                 Text("How far one press moves brightness or contrast.")
                     .font(.caption)
@@ -233,7 +212,7 @@ private struct ScheduleSettings: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    Toggle("Switch profiles on a schedule", isOn: scheduleBinding)
+                    Toggle("Switch profiles on a schedule", isOn: $model.isScheduleEnabled)
                 } footer: {
                     Text(
                         """
@@ -299,10 +278,6 @@ private struct ScheduleSettings: View {
             minute: parts.minute ?? 0
         )
         self.newProfileID = nil
-    }
-
-    private var scheduleBinding: Binding<Bool> {
-        Binding(get: { model.isScheduleEnabled }, set: { model.isScheduleEnabled = $0 })
     }
 
     private func enabledBinding(for rule: ScheduleRule) -> Binding<Bool> {

@@ -48,6 +48,13 @@ final class AppModel {
         profiles = store.profiles()
         hotKeys = store.hotKeys()
         scheduleRules = store.scheduleRules()
+        launchProfileID = store.launchProfileID
+        launchesAtLogin = LoginItem.isEnabled
+
+        // Assigned directly so the didSet side effects do not run before the
+        // rest of the model exists.
+        _hotKeyStep = store.hotKeyStep
+        _isScheduleEnabled = store.isScheduleEnabled
 
         guard ddc.isSupported else {
             unsupportedReason = """
@@ -64,9 +71,9 @@ final class AppModel {
 
         // A schedule rule describes what the panel should look like now, so it
         // wins over a fixed launch profile when both are set.
-        if store.isScheduleEnabled {
+        if isScheduleEnabled {
             schedule.applyCurrentRule()
-        } else if let id = store.launchProfileID,
+        } else if let id = launchProfileID,
                   let profile = profiles.first(where: { $0.id == id }) {
             apply(profile)
         }
@@ -76,7 +83,7 @@ final class AppModel {
 
     /// Rescans the bus. Plugging a cable creates a new `IOAVService`, so the
     /// old handles are dead after any reconfiguration and must be rebuilt.
-    func refreshDisplays(applyRemembered: Bool = false) {
+    func refreshDisplays() {
         displays = ddc.discoverDisplays()
 
         if let selectedDisplayID, !displays.contains(where: { $0.id == selectedDisplayID }) {
@@ -162,15 +169,36 @@ final class AppModel {
     }
 
     private func observeDisplayChanges() {
-        screenObserver.token = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.refreshDisplays(applyRemembered: false)
+        screenObserver.add(
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshDisplays() }
             }
-        }
+        )
+
+        // Waking does not always change the screen configuration, but the
+        // IOAVService handles taken before sleep are dead either way: writes
+        // through them are accepted and go nowhere. Rediscovering rebuilds them.
+        screenObserver.add(
+            NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    Task<Void, Never> { @MainActor in
+                        // The bus is not ready the instant the Mac wakes; the
+                        // display has its own power-up sequence to finish.
+                        try? await Task.sleep(for: .seconds(2))
+                        self.refreshDisplays()
+                    }
+                }
+            }
+        )
     }
 
     func selectDisplay(_ id: CGDirectDisplayID) {
@@ -262,13 +290,22 @@ final class AppModel {
         hotKeys[action] != nil && !HotKeyCenter.shared.isRegistered(action)
     }
 
-    var hotKeyStep: Int {
-        get { store.hotKeyStep }
-        set { store.hotKeyStep = max(1, min(newValue, 50)) }
+    /// Stored rather than computed through to `Store`.
+    ///
+    /// `@Observable` tracks stored properties. A computed property that reads
+    /// UserDefaults registers no dependency, so SwiftUI never learns the value
+    /// changed and a bound control drifts out of step with what is persisted —
+    /// which is how the schedule toggle came back off after the window lost
+    /// focus. Each of these writes through on assignment instead.
+    var hotKeyStep: Int = 5 {
+        didSet {
+            hotKeyStep = max(1, min(hotKeyStep, 50))
+            store.hotKeyStep = hotKeyStep
+        }
     }
 
     private func perform(_ action: HotKeyAction) {
-        let step = store.hotKeyStep
+        let step = hotKeyStep
         switch action {
         case .brightnessUp: adjust(.brightness, by: step)
         case .brightnessDown: adjust(.brightness, by: -step)
@@ -294,15 +331,15 @@ final class AppModel {
             else { return }
             apply(profile)
         }
-        schedule.update(rules: scheduleRules, isEnabled: store.isScheduleEnabled)
+        schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
     }
 
-    var isScheduleEnabled: Bool {
-        get { store.isScheduleEnabled }
-        set {
-            store.isScheduleEnabled = newValue
-            schedule.update(rules: scheduleRules, isEnabled: newValue)
-            if newValue { schedule.applyCurrentRule() }
+    var isScheduleEnabled: Bool = false {
+        didSet {
+            guard isScheduleEnabled != oldValue else { return }
+            store.isScheduleEnabled = isScheduleEnabled
+            schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
+            if isScheduleEnabled { schedule.applyCurrentRule() }
         }
     }
 
@@ -324,14 +361,26 @@ final class AppModel {
 
     private func persistSchedule() {
         store.setScheduleRules(scheduleRules)
-        schedule.update(rules: scheduleRules, isEnabled: store.isScheduleEnabled)
+        schedule.update(rules: scheduleRules, isEnabled: isScheduleEnabled)
     }
 
     // MARK: - Login item
 
-    var launchesAtLogin: Bool {
-        get { LoginItem.isEnabled }
-        set { LoginItem.setEnabled(newValue) }
+    /// Mirrors the system's login item registration.
+    ///
+    /// Assigning asks the system to change it and then reads back what the
+    /// system actually did, so a refused registration shows as still off rather
+    /// than as a switch that silently lies.
+    var launchesAtLogin: Bool = false {
+        didSet {
+            guard launchesAtLogin != oldValue else { return }
+            LoginItem.setEnabled(launchesAtLogin)
+            let actual = LoginItem.isEnabled
+            loginItemRefused = actual != launchesAtLogin
+            if loginItemRefused {
+                launchesAtLogin = actual
+            }
+        }
     }
 
     // MARK: - Profiles
@@ -397,9 +446,12 @@ final class AppModel {
         store.setProfiles(profiles)
     }
 
+    /// Set when the system refused a login item registration, which happens
+    /// when the app runs from a build directory instead of a bundle.
+    private(set) var loginItemRefused = false
+
     var launchProfileID: UUID? {
-        get { store.launchProfileID }
-        set { store.launchProfileID = newValue }
+        didSet { store.launchProfileID = launchProfileID }
     }
 }
 
@@ -412,11 +464,16 @@ final class AppModel {
 /// model's own state. Parking the token in its own object moves the cleanup to a
 /// deinit that has no isolation to violate.
 private final class ScreenObserverToken: @unchecked Sendable {
-    var token: Any?
+    private var tokens: [Any] = []
+
+    func add(_ token: Any) {
+        tokens.append(token)
+    }
 
     deinit {
-        if let token {
+        for token in tokens {
             NotificationCenter.default.removeObserver(token)
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
     }
 }
