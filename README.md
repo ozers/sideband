@@ -37,6 +37,16 @@ system brightness keys for those.
 
 ## Install
 
+Download the latest disk image from
+[Releases](https://github.com/ozers/sideband/releases), drag Sideband to
+Applications, and open it. The build is signed with a Developer ID and notarised
+by Apple, so it opens on a double-click with no right-click → Open dance.
+
+Keep it in /Applications: macOS will not register a login item for an app running
+from somewhere else.
+
+### Building it yourself
+
 ```sh
 git clone https://github.com/ozers/sideband.git
 cd sideband
@@ -44,9 +54,9 @@ Scripts/bundle.sh
 cp -r dist/Sideband.app /Applications/
 ```
 
-There is no signed release yet. The build is signed ad-hoc, so the first launch
-needs a right-click → Open, and the app has to live in /Applications for macOS to
-accept it as a login item.
+That build is signed ad-hoc, which is enough to run locally but not to move to
+another Mac. `Scripts/release.sh` does the signed and notarised build and needs a
+Developer ID certificate; its header explains the one-time setup.
 
 ## Shortcuts
 
@@ -78,8 +88,10 @@ polite "DDC unavailable" message instead of a launch-time crash.
 
 Two consequences follow from that, and they are not bugs:
 
-**No App Store.** Private API use disqualifies the app. Build it yourself or
-take a release binary.
+**No App Store.** Private API use disqualifies the app. Notarisation is a
+different thing and is not a problem — Apple scans the binary for malware rather
+than reviewing what it calls — so released builds are signed and notarised and
+open normally.
 
 **A capability string is a claim, not a guarantee.** A display may list a feature
 and then ignore every write to it — the MSI this was built against advertises
